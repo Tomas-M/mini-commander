@@ -31,7 +31,7 @@ void draw_buttons(int maxY, int maxX) {
     move(maxY - 1, 0);
     clrtoeol();
 
-    char *buttons[] = {"Sort", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"};
+    char *buttons[] = {"List", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"};
     int num_buttons = sizeof(buttons) / sizeof(char *);
 
     int total_width = maxX - (num_buttons - 1);  // Subtract (num_buttons - 1) to account for spaces between buttons
@@ -47,12 +47,14 @@ void draw_buttons(int maxY, int maxX) {
             extra_space--;
         }
 
+        attrset(A_NORMAL);
         if (i == num_buttons - 1) {  // Last button (F10)
             mvprintw(maxY - 1, x, "F%d ", i + 2);
         } else {
             mvprintw(maxY - 1, x, "F%d", i + 2);
         }
 
+        attron(COLOR_PAIR(3));
         attron(A_REVERSE);
         mvprintw(maxY - 1, x + 2 + (i == num_buttons - 1), "%-*s", button_width - 2 + extra, buttons[i]);
         attroff(A_REVERSE);
@@ -83,6 +85,10 @@ void draw_windows(int maxY, int maxX) {
     win1 = newwin(winHeight, winWidth1, 0, 0);
     win2 = newwin(winHeight, winWidth2, 0, winWidth1);
 
+    // Apply the color pair to the window
+    wbkgd(win1, COLOR_PAIR(2));
+    wbkgd(win2, COLOR_PAIR(2));
+
     // Add borders to windows using wborder()
     wborder(win1, '|', '|', '-', '-', '+', '+', '+', '+');
     wborder(win2, '|', '|', '-', '-', '+', '+', '+', '+');
@@ -94,6 +100,8 @@ void draw_windows(int maxY, int maxX) {
 
 
 void update_cmd() {
+
+    attron(COLOR_PAIR(1));
 
     // Print username, hostname, and current directory path
     move(LINES - 2, 0);
@@ -120,10 +128,15 @@ void update_cmd() {
 
 void init_all() {
     initscr();
+    start_color();
     raw();
     keypad(stdscr, TRUE);
     noecho();
     curs_set(1);
+
+    init_pair(1, COLOR_WHITE, COLOR_BLACK);
+    init_pair(2, COLOR_WHITE, COLOR_BLUE);
+    init_pair(3, COLOR_CYAN, COLOR_BLACK);
 }
 
 void cleanup() {

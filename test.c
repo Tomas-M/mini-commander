@@ -4,8 +4,26 @@
 #include <pwd.h>
 #include <sys/utsname.h>
 #include <stdlib.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <time.h>
 
 #define CMD_MAX 16384
+
+typedef struct FileNode {
+    char name[256];
+    time_t last_access_time;
+    off_t size;
+    mode_t chmod;
+    uid_t chown;
+    int is_dir;
+    int is_link;
+    struct FileNode *next;
+} FileNode;
+
+FileNode *left_files = NULL;
+FileNode *right_files = NULL;
 
 // Global windows
 WINDOW *win1;
@@ -25,6 +43,56 @@ int cmd_len = 0;
 char left_path[CMD_MAX] = "/home";
 char right_path[CMD_MAX] = "/bin";
 char *current_path = left_path;
+
+
+FileNode* read_directory(const char *path) {
+    DIR *dir;
+    struct dirent *entry;
+    struct stat file_stat;
+    FileNode *head = NULL, *current = NULL;
+
+    if ((dir = opendir(path)) == NULL) {
+        return NULL;
+    }
+
+    while ((entry = readdir(dir)) != NULL) {
+        FileNode *new_node = (FileNode*) malloc(sizeof(FileNode));
+        snprintf(new_node->name, sizeof(new_node->name), "%s", entry->d_name);
+
+        char full_path[CMD_MAX];
+        snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+        stat(full_path, &file_stat);
+
+        new_node->last_access_time = file_stat.st_atime;
+        new_node->size = file_stat.st_size;
+        new_node->chmod = file_stat.st_mode;
+        new_node->chown = file_stat.st_uid;
+        new_node->is_dir = S_ISDIR(file_stat.st_mode);
+        new_node->is_link = S_ISLNK(file_stat.st_mode);
+        new_node->next = NULL;
+
+        if (head == NULL) {
+            head = new_node;
+            current = head;
+        } else {
+            current->next = new_node;
+            current = new_node;
+        }
+    }
+
+    closedir(dir);
+    return head;
+}
+
+void free_file_nodes(FileNode *head) {
+    FileNode *tmp;
+    while (head != NULL) {
+        tmp = head;
+        head = head->next;
+        free(tmp);
+    }
+}
+
 
 
 void draw_buttons(int maxY, int maxX) {
@@ -126,6 +194,55 @@ void update_cmd() {
 }
 
 
+void print_file_names(WINDOW *win, FileNode *head) {
+    FileNode *current = head;
+    int line = 1;  // Start from the second row to avoid the border
+
+    while (current != NULL) {
+        char prefix = ' ';
+        if (current->is_dir) {
+            prefix = '/';
+        } else if (current->is_link) {
+            prefix = '@';
+        }
+
+        struct tm *tm = localtime(&current->last_access_time);
+        char date_str[13];
+        strftime(date_str, sizeof(date_str), "%b %d %H:%M", tm);
+
+        long long size = current->size;
+        char *suffix = "";
+        if (size >= 1024) {
+            size /= 1024;
+            suffix = "K";
+            if (size >= 1024) {
+                size /= 1024;
+                suffix = "M";
+                if (size >= 1024) {
+                    size /= 1024;
+                    suffix = "G";
+                }
+            }
+        }
+
+        int width = getmaxx(win);
+        mvwprintw(win, line, 1, "%c%-*s|%12s|%7lld%s", prefix, width - 22, current->name, date_str, size, suffix);
+        line++;
+        current = current->next;
+    }
+
+    // Fill remaining lines with empty strings to maintain columns
+    int height = getmaxy(win);
+    int width = getmaxx(win);
+    for (; line < height - 1; ++line) {  // -1 to avoid the bottom border
+        mvwprintw(win, line, 1, "%-*s|%12s|%7s", width - 22, "", "", "");
+    }
+
+    wrefresh(win);
+}
+
+
+
 void init_all() {
     initscr();
     start_color();
@@ -159,6 +276,14 @@ void redraw_ui() {
 
 int main() {
     init_all();
+
+    left_files = read_directory(left_path);
+    right_files = read_directory(right_path);
+
+    // Print file names in left and right windows
+    print_file_names(win1, left_files);
+    print_file_names(win2, right_files);
+
 
     uname(&unameData);
     pw = getpwuid(getuid());

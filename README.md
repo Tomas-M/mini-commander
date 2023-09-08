@@ -1,2 +1,2 @@
 # mini-commander
-Very simpleified clone of Midnight Commander
+Very simplified clone of Midnight Commander for Linux

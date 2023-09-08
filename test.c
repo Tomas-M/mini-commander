@@ -22,8 +22,8 @@ int prompt_length = 0;
 char cmd[CMD_MAX] = {0};
 int cmd_len = 0;
 
-char left_path[CMD_MAX] = "/";
-char right_path[CMD_MAX] = "/";
+char left_path[CMD_MAX] = "/home";
+char right_path[CMD_MAX] = "/bin";
 char *current_path = left_path;
 
 
@@ -66,7 +66,7 @@ void draw_windows(int maxY, int maxX) {
     refresh();
 
     // Calculate window dimensions
-    int winHeight = maxY - 4;
+    int winHeight = maxY - 2;
     int winWidth1 = maxX / 2;
     int winWidth2 = maxX / 2;
 
@@ -80,8 +80,8 @@ void draw_windows(int maxY, int maxX) {
     delwin(win2);
 
     // Create new windows
-    win1 = newwin(winHeight, winWidth1, 1, 0);
-    win2 = newwin(winHeight, winWidth2, 1, winWidth1);
+    win1 = newwin(winHeight, winWidth1, 0, 0);
+    win2 = newwin(winHeight, winWidth2, 0, winWidth1);
 
     // Add borders to windows using wborder()
     wborder(win1, '|', '|', '-', '-', '+', '+', '+', '+');
@@ -211,12 +211,9 @@ int main() {
             cmd_offset--;
         }
 
-//        if (cmd_len - cmd_offset < max_cmd_display) {
-//            cmd_offset = cmd_len - max_cmd_display;
-//            if (cmd_offset < 0) {
-//                cmd_offset = 0;
-//            }
-//        }
+        if (cmd_offset < 0) {
+                cmd_offset = 0;
+        }
     }
 
     endwin();

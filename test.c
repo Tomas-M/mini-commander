@@ -1,9 +1,36 @@
 #include <ncurses.h>
+#include <string.h>
 
 // Global windows
 WINDOW *win1;
 WINDOW *win2;
 
+void draw_buttons(int maxY, int maxX) {
+
+    char *buttons[] = {"Sort", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"};
+    int num_buttons = sizeof(buttons) / sizeof(char *);
+
+    int total_width = maxX;
+    int button_width = total_width / num_buttons;
+
+    int extra_space = total_width - (button_width * num_buttons);
+
+    int x = 0;
+    for (int i = 0; i < num_buttons; ++i) {
+        int extra = 0;
+        if (extra_space > 0) {
+            extra = 1;
+            extra_space--;
+        }
+
+        mvprintw(maxY - 1, x, "F%d", i + 2);
+        attron(A_REVERSE);
+        mvprintw(maxY - 1, x + 2, "%-*s", button_width - 2 + extra, buttons[i]);
+        attroff(A_REVERSE);
+
+        x += button_width + extra;
+    }
+}
 
 void draw_windows() {
     // Refresh stdscr to ensure it's updated
@@ -38,6 +65,9 @@ void draw_windows() {
     // Refresh windows to make borders visible
     wrefresh(win1);
     wrefresh(win2);
+
+    // Draw buttons
+    draw_buttons(maxY, maxX);
 }
 
 void cleanup() {
@@ -45,7 +75,6 @@ void cleanup() {
     delwin(win2);
     endwin();
 }
-
 
 int main() {
     // Initialize ncurses
@@ -58,7 +87,7 @@ int main() {
     draw_windows();
 
     int ch;
-    while (ch = getch() != KEY_F(10)) {
+    while ((ch = getch()) != KEY_F(10)) {
         if (ch == KEY_RESIZE) {
             // Redraw windows on resize
             draw_windows();

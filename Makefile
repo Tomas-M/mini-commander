@@ -6,5 +6,8 @@ ncurses-menu: mc.c
 
 .PHONY: clean
 
+test: mc
+	./mc
+
 clean:
 	rm -f mc

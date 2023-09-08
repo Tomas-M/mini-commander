@@ -52,16 +52,16 @@ void init_ui() {
 
     // Highlighted labels for F keys
     attron(A_REVERSE);
-    mvprintw(LINES - 1, 3, "Help ");
-    mvprintw(LINES - 1, 11, "Menu ");
-    mvprintw(LINES - 1, 19, "View ");
-    mvprintw(LINES - 1, 27, "Edit ");
-    mvprintw(LINES - 1, 35, "Copy ");
-    mvprintw(LINES - 1, 43, "Move ");
+    mvprintw(LINES - 1, 3, "Help");
+    mvprintw(LINES - 1, 11, "Sort");
+    mvprintw(LINES - 1, 19, "View");
+    mvprintw(LINES - 1, 27, "Edit");
+    mvprintw(LINES - 1, 35, "Copy");
+    mvprintw(LINES - 1, 43, "Move");
     mvprintw(LINES - 1, 51, "Mkdir");
-    mvprintw(LINES - 1, 59, "Del  ");
+    mvprintw(LINES - 1, 59, "Del");
     mvprintw(LINES - 1, 67, "Rfrsh");
-    mvprintw(LINES - 1, 77, "Quit ");
+    mvprintw(LINES - 1, 77, "Quit");
     attroff(A_REVERSE);
 
 
@@ -183,12 +183,16 @@ int main() {
     while (1) {
         update_cmd(current_path, cmd);
         draw_panel(1, 1, LINES - 5, COLS / 2 - 1, left_path);
-        draw_panel(1, COLS / 2 + 1, LINES - 5, COLS / 2 - 1, right_path);
+        draw_panel(1, COLS / 2 + 1, LINES - 5, COLS - (COLS / 2 - 1) - 4, right_path);
         refresh();
 
         int ch = getch();
         if (ch == KEY_F(10)) {
             break;
+        } else if (ch == KEY_RESIZE) {  // Handle terminal resize
+            endwin();
+            init_all();
+            update_cmd(current_path, cmd);
         } else if (ch == '\n' && cmd_len > 0) {
             endwin();  // End ncurses mode
             printf("%s@%s:%s# %s\n", username, unameData.nodename, current_path, cmd);

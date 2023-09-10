@@ -27,6 +27,7 @@ typedef struct FileNode {
 FileNode *left_files = NULL;
 FileNode *right_files = NULL;
 
+
 typedef struct PanelProp {
     int selected_index;
     int scroll_index;
@@ -35,6 +36,14 @@ typedef struct PanelProp {
 
 PanelProp left_panel_properties = {0};
 PanelProp right_panel_properties = {0};
+
+typedef enum {
+    LEFT_PANEL,
+    RIGHT_PANEL
+} ActivePanel;
+
+ActivePanel active_panel = LEFT_PANEL;  // Default to the left panel
+
 
 // Global windows
 WINDOW *win1;

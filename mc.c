@@ -27,6 +27,15 @@ typedef struct FileNode {
 FileNode *left_files = NULL;
 FileNode *right_files = NULL;
 
+typedef struct PanelProp {
+    int selected_index;
+    int scroll_index;
+    int is_active;
+} PanelProp;
+
+PanelProp left_panel_properties = {0};
+PanelProp right_panel_properties = {0};
+
 // Global windows
 WINDOW *win1;
 WINDOW *win2;
@@ -43,7 +52,7 @@ char cmd[CMD_MAX] = {0};
 int cmd_len = 0;
 
 char left_path[CMD_MAX] = "cwd";
-char right_path[CMD_MAX] = "/";
+char right_path[CMD_MAX] = "/bin";
 char *current_path = left_path;
 
 
@@ -221,7 +230,7 @@ void update_panel(WINDOW *win, FileNode *head) {
 
     line++;
 
-    while (current != NULL) {
+    while (current != NULL && line < height - 3) {
         char prefix = ' ';
         if (current->is_dir) {
             prefix = '/';

@@ -323,7 +323,6 @@ void redraw_ui() {
    int maxY, maxX;
    getmaxyx(stdscr, maxY, maxX);
 
-   refresh();
    draw_windows(maxY, maxX);
    draw_buttons(maxY, maxX);
    update_cmd();
@@ -347,14 +346,14 @@ int main() {
     username = pw->pw_name;
 
     mousemask(ALL_MOUSE_EVENTS, NULL);
+    redraw_ui(); // initial screen
 
     while (1) {
-        redraw_ui();
+        update_cmd();
 
-    // Print file names in left and right windows
-    update_panel(win1, left_panel.files);
-    update_panel(win2, right_panel.files);
-
+        // Print file names in left and right windows
+        update_panel(win1, left_panel.files);
+        update_panel(win2, right_panel.files);
 
         int ch = getch();
         if (ch == KEY_F(10)) {
@@ -362,7 +361,7 @@ int main() {
         } else if (ch == KEY_RESIZE) {  // Handle terminal resize
             endwin();
             init_all();
-            update_cmd();
+            redraw_ui();
         } else if (ch == KEY_MOUSE) { // handle mouse events
             if (getmouse(&event) == OK) {
                 if (event.bstate & BUTTON1_CLICKED) {
@@ -408,9 +407,12 @@ int main() {
             cmd[++cmd_len] = '\0';
             cursor_pos++;
         } else if (ch == '\t') {
-            /// TBD
+            if (active_panel == &left_panel) {
+                active_panel = &right_panel;
+            } else {
+                active_panel = &left_panel;
+            }
         }
-
 
         // Handle scrolling in command line
         int max_cmd_display = COLS - (strlen(username) + strlen(unameData.nodename) + strlen(active_panel->path) + 6) - 1;
@@ -425,7 +427,6 @@ int main() {
         }
     }
 
-    endwin();
     cleanup();
     return 0;
 }

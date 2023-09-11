@@ -28,7 +28,7 @@ typedef enum {
 
 typedef struct FileNode {
     char* name;
-    time_t last_access_time;
+    time_t mtime;
     off_t size;
     mode_t chmod;
     uid_t chown;
@@ -97,7 +97,7 @@ int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order) {
             break;
         case SORT_BY_TIME_ASC:
         case SORT_BY_TIME_DESC:
-            result = (a->last_access_time > b->last_access_time) - (a->last_access_time < b->last_access_time);
+            result = (a->mtime > b->mtime) - (a->mtime < b->mtime);
             break;
     }
 
@@ -161,7 +161,7 @@ FileNode* read_directory(const char *path) {
         new_node->next = NULL;
         new_node->name = strdup(entry->d_name);
 
-        new_node->last_access_time = file_stat.st_atime;
+        new_node->mtime = file_stat.st_mtime;
         new_node->size = file_stat.st_size;
         new_node->chmod = file_stat.st_mode;
         new_node->chown = file_stat.st_uid;
@@ -314,9 +314,13 @@ void update_cmd() {
 void update_panel(WINDOW *win, FileNode *head) {
     FileNode *current = head;
     int line = 1;  // Start from the second row to avoid the border
-
     int width = getmaxx(win) - 2;
     int height = getmaxy(win);
+
+    // Get the current year
+    time_t now = time(NULL);
+    struct tm *current_tm = localtime(&now);
+    int current_year = current_tm->tm_year;
 
     wattron(win,A_BOLD);
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
@@ -350,9 +354,14 @@ void update_panel(WINDOW *win, FileNode *head) {
             wattron(win,A_BOLD);
         }
 
-        struct tm *tm = localtime(&current->last_access_time);
         char date_str[13];
-        strftime(date_str, sizeof(date_str), "%b %d %H:%M", tm);
+        struct tm *tm = localtime(&current->mtime);
+
+        if (tm->tm_year != current_year) {
+            strftime(date_str, sizeof(date_str), "%b %d  %Y", tm); // Display year if different
+        } else {
+            strftime(date_str, sizeof(date_str), "%b %d %H:%M", tm); // Display time if same year
+        }
 
         long long size = current->size;
         char size_str[50];  // Buffer to hold the size and suffix
@@ -400,8 +409,6 @@ void update_panel(WINDOW *win, FileNode *head) {
     wrefresh(win);
     cursor_to_cmd();
 }
-
-
 
 
 void init_screen() {

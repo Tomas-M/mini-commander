@@ -20,14 +20,14 @@ typedef struct FileNode {
     int is_dir;
     int is_executable;
     int is_link;
-    int is_selected;
+    int is_broken; // invalid link
+    int is_selected; // with Insert key
     struct FileNode *next;
 } FileNode;
 
 typedef struct PanelProp {
     int selected_index;
     int scroll_index;
-    int is_active;
     char path[CMD_MAX];
     FileNode *files;
 } PanelProp;
@@ -64,6 +64,7 @@ FileNode* read_directory(const char *path) {
     DIR *dir;
     struct dirent *entry;
     struct stat file_stat;
+    struct stat link_stat;
     FileNode *head = NULL, *current = NULL;
 
     if ((dir = opendir(path)) == NULL) {
@@ -224,25 +225,31 @@ void update_panel(WINDOW *win, FileNode *head) {
 
     wattron(win,A_BOLD);
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
-    mvwprintw(win, line, 1, "%s", "Name");
-    mvwprintw(win, line, width - 12 - 7 + 2, "%s", "Size");
+    mvwprintw(win, line, 1, "%*s%s", ((width - 12 - 7 - 2) / 2) - (strlen("Name") / 2), "", "Name");
+    mvwprintw(win, line, width - 12 - 7 + 1, "%s", "Size");
     mvwprintw(win, line, width - 7 - 4, "%s", "Modify time");
     wattroff(win,A_BOLD);
-
-    wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-    mvwprintw(win, line, width - 7 - 5, "%s", "|");
-    mvwprintw(win, line, width - 12 - 7 - 1, "%s", "|");
 
     line++;
 
     while (current != NULL && line < height - 3) {
         char prefix = ' ';
-        if (current->is_dir) {
+        // set default color
+        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+        wattroff(win,A_BOLD);
+
+        if (current->is_dir && current->is_link) {
+            prefix = '~';
+            wattron(win,A_BOLD);
+        } else if (current->is_dir) {
             prefix = '/';
+            wattron(win,A_BOLD);
         } else if (current->is_link) {
             prefix = '@';
         } else if (current->is_executable) {
             prefix = '*';
+            wattron(win, COLOR_PAIR(COLOR_GREEN_ON_BLUE));
+            wattron(win,A_BOLD);
         }
 
         struct tm *tm = localtime(&current->last_access_time);
@@ -274,14 +281,18 @@ void update_panel(WINDOW *win, FileNode *head) {
            snprintf(size_str, sizeof(size_str), "UP--DIR");
         }
 
-        if (current->is_dir)
-        {
-           
-        }
-        mvwprintw(win, line, 1, "%c%-*s|%7s|%12s", prefix, width - 12 - 7 - 2 - 1, current->name, size_str, date_str);
+        int name_width = width - 12 - 7 - 3;
+
+        mvwprintw(win, line, 1, "%c%-*s", prefix, name_width, current->name);
+        mvwprintw(win, line, width - 7 - 12, "%7s", size_str);
+        mvwprintw(win, line, width - 12 + 1, "%12s", date_str);
         line++;
         current = current->next;
     }
+
+    // reset color to default
+    wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+    wattroff(win,A_BOLD);
 
     // Fill separator columns
     mvwvline(win, 1, width - 12, '|', height -3);
@@ -332,7 +343,7 @@ void redraw_ui() {
 int main() {
 
     getcwd(left_panel.path, sizeof(left_panel.path));
-    strcpy(right_panel.path,"/");
+    strcpy(right_panel.path,"/root");
 
     init_all();
 

@@ -12,7 +12,7 @@
 #define CMD_MAX 16384
 
 typedef struct FileNode {
-    char name[256];
+    char* name;
     time_t last_access_time;
     off_t size;
     mode_t chmod;
@@ -21,6 +21,7 @@ typedef struct FileNode {
     int is_executable;
     int is_link;
     int is_link_broken; // invalid link
+    char* link_target;
     int is_selected; // with Insert key
     struct FileNode *next;
 } FileNode;
@@ -76,23 +77,30 @@ FileNode* read_directory(const char *path) {
         if (strcmp(entry->d_name, ".") == 0) continue;
         if (strcmp(entry->d_name, "..") == 0 && strcmp(path, "/") == 0) continue;
 
-        FileNode *new_node = (FileNode*) malloc(sizeof(FileNode));
-        snprintf(new_node->name, sizeof(new_node->name), "%s", entry->d_name);
-
         char full_path[CMD_MAX];
         snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
-        stat(full_path, &file_stat);
+        lstat(full_path, &file_stat);
+
+        FileNode *new_node = (FileNode*) malloc(sizeof(FileNode));
+
+        new_node->next = NULL;
+        new_node->name = strdup(entry->d_name);
 
         new_node->last_access_time = file_stat.st_atime;
         new_node->size = file_stat.st_size;
         new_node->chmod = file_stat.st_mode;
         new_node->chown = file_stat.st_uid;
         new_node->is_dir = S_ISDIR(file_stat.st_mode);
-    //    new_node->is_link_broken = ...;
-        new_node->is_link = S_ISLNK(file_stat.st_mode);
         new_node->is_executable = (file_stat.st_mode & S_IXUSR) || (file_stat.st_mode & S_IXGRP) || (file_stat.st_mode & S_IXOTH);
         new_node->is_selected = false;
-        new_node->next = NULL;
+        new_node->is_link = S_ISLNK(file_stat.st_mode);
+        new_node->is_link_broken = 0;
+
+        if (new_node->is_link && stat(full_path, &link_stat) != 0) {
+            new_node->is_link_broken = 1;  // Link is broken
+        }
+
+        new_node->link_target = NULL;  // TODO, fix this, Null-terminate link_target
 
         if (head == NULL) {
             head = new_node;
@@ -110,6 +118,8 @@ FileNode* read_directory(const char *path) {
 void free_file_nodes(FileNode *head) {
     FileNode *tmp;
     while (head != NULL) {
+        free(head->name);
+        free(head->link_target);
         tmp = head;
         head = head->next;
         free(tmp);

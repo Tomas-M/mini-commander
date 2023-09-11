@@ -24,26 +24,17 @@ typedef struct FileNode {
     struct FileNode *next;
 } FileNode;
 
-FileNode *left_files = NULL;
-FileNode *right_files = NULL;
-
-
 typedef struct PanelProp {
     int selected_index;
     int scroll_index;
     int is_active;
+    char path[CMD_MAX];
+    FileNode *files;
 } PanelProp;
 
-PanelProp left_panel_properties = {0};
-PanelProp right_panel_properties = {0};
-
-typedef enum {
-    LEFT_PANEL,
-    RIGHT_PANEL
-} ActivePanel;
-
-ActivePanel active_panel = LEFT_PANEL;  // Default to the left panel
-
+PanelProp left_panel = {0};
+PanelProp right_panel = {0};
+PanelProp* active_panel = &left_panel;
 
 // Global windows
 WINDOW *win1;
@@ -60,9 +51,13 @@ int prompt_length = 0;
 char cmd[CMD_MAX] = {0};
 int cmd_len = 0;
 
-char left_path[CMD_MAX] = "cwd";
-char right_path[CMD_MAX] = "/bin";
-char *current_path = left_path;
+enum {
+    COLOR_WHITE_ON_BLACK = 1,
+    COLOR_WHITE_ON_BLUE,
+    COLOR_BLACK_ON_CYAN,
+    COLOR_YELLOW_ON_BLUE,
+    COLOR_GREEN_ON_BLUE
+};
 
 
 FileNode* read_directory(const char *path) {
@@ -147,10 +142,8 @@ void draw_buttons(int maxY, int maxX) {
             mvprintw(maxY - 1, x, "F%d", i + 2);
         }
 
-        attron(COLOR_PAIR(3));
-        attron(A_REVERSE);
+        attron(COLOR_PAIR(COLOR_BLACK_ON_CYAN));
         mvprintw(maxY - 1, x + 2 + (i == num_buttons - 1), "%-*s", button_width - 2 + extra, buttons[i]);
-        attroff(A_REVERSE);
 
         x += button_width + extra + 1 + (i == num_buttons - 1);  // +1 spacer between buttons, +1 for the last button (F10)
     }
@@ -167,7 +160,7 @@ void draw_windows(int maxY, int maxX) {
 
     // Adjust for odd COLS
     if (maxX % 2 != 0) {
-        winWidth1 += 1;
+        winWidth2 += 1;
     }
 
     // Delete old windows
@@ -179,8 +172,8 @@ void draw_windows(int maxY, int maxX) {
     win2 = newwin(winHeight, winWidth2, 0, winWidth1);
 
     // Apply the color pair to the window
-    wbkgd(win1, COLOR_PAIR(2));
-    wbkgd(win2, COLOR_PAIR(2));
+    wbkgd(win1, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+    wbkgd(win2, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
 
     // Add borders to windows using wborder()
     wborder(win1, '|', '|', '-', '-', '+', '+', '+', '+');
@@ -199,15 +192,15 @@ void cursor_to_cmd() {
 
 void update_cmd() {
 
-    attron(COLOR_PAIR(1));
+    attron(COLOR_PAIR(COLOR_WHITE_ON_BLACK));
 
     // Print username, hostname, and current directory path
     move(LINES - 2, 0);
     clrtoeol();
-    printw("%s@%s:%s# ", username, unameData.nodename, current_path);
+    printw("%s@%s:%s# ", username, unameData.nodename, active_panel->path);
 
     // Calculate max command display length
-    prompt_length = strlen(username) + strlen(unameData.nodename) + strlen(current_path) + 4;  // 5 accounts for '@', ':', '#', and spaces.
+    prompt_length = strlen(username) + strlen(unameData.nodename) + strlen(active_panel->path) + 4;  // 5 accounts for '@', ':', '#', and spaces.
     int max_cmd_display = COLS - prompt_length;
 
     // Print the visible part of the command, limited to max_cmd_display characters
@@ -229,11 +222,14 @@ void update_panel(WINDOW *win, FileNode *head) {
     int width = getmaxx(win) - 2;
     int height = getmaxy(win);
 
-    wattron(win, COLOR_PAIR(4));
+    wattron(win,A_BOLD);
+    wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
     mvwprintw(win, line, 1, "%s", "Name");
     mvwprintw(win, line, width - 12 - 7 + 2, "%s", "Size");
     mvwprintw(win, line, width - 7 - 4, "%s", "Modify time");
-    wattron(win, COLOR_PAIR(2));
+    wattroff(win,A_BOLD);
+
+    wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
     mvwprintw(win, line, width - 7 - 5, "%s", "|");
     mvwprintw(win, line, width - 12 - 7 - 1, "%s", "|");
 
@@ -278,21 +274,24 @@ void update_panel(WINDOW *win, FileNode *head) {
            snprintf(size_str, sizeof(size_str), "UP--DIR");
         }
 
+        if (current->is_dir)
+        {
+           
+        }
         mvwprintw(win, line, 1, "%c%-*s|%7s|%12s", prefix, width - 12 - 7 - 2 - 1, current->name, size_str, date_str);
         line++;
         current = current->next;
     }
 
-    // Fill remaining lines with empty strings to maintain columns
-    for (; line < height - 3; ++line) {
-        mvwprintw(win, line, 1, "%-*s|        |           ", width - 12 - 7 - 2, " ");
-    }
-
+    // Fill separator columns
+    mvwvline(win, 1, width - 12, '|', height -3);
+    mvwvline(win, 1, width - 7 - 12 - 1, '|', height -3);
     mvwhline(win, height - 3, 1, '-', width);
 
     wrefresh(win);
     cursor_to_cmd();
 }
+
 
 
 
@@ -304,10 +303,13 @@ void init_all() {
     noecho();
     curs_set(1);
 
-    init_pair(1, COLOR_WHITE, COLOR_BLACK);
-    init_pair(2, COLOR_WHITE, COLOR_BLUE);
-    init_pair(3, COLOR_CYAN, COLOR_BLACK);
-    init_pair(4, COLOR_YELLOW, COLOR_BLUE);
+    init_pair(COLOR_WHITE_ON_BLACK, COLOR_WHITE, COLOR_BLACK);
+
+    init_pair(COLOR_WHITE_ON_BLUE, COLOR_WHITE, COLOR_BLUE);
+    init_pair(COLOR_YELLOW_ON_BLUE, COLOR_YELLOW, COLOR_BLUE);
+    init_pair(COLOR_GREEN_ON_BLUE, COLOR_GREEN, COLOR_BLUE);
+
+    init_pair(COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_CYAN);
 }
 
 void cleanup() {
@@ -329,24 +331,29 @@ void redraw_ui() {
 }
 
 int main() {
+
+    getcwd(left_panel.path, sizeof(left_panel.path));
+    strcpy(right_panel.path,"/");
+
     init_all();
 
-    getcwd(left_path, sizeof(left_path));
+    left_panel.files = read_directory(left_panel.path);
+    right_panel.files = read_directory(right_panel.path);
 
-    left_files = read_directory(left_path);
-    right_files = read_directory(right_path);
-
+    MEVENT event;
 
     uname(&unameData);
     pw = getpwuid(getuid());
     username = pw->pw_name;
 
+    mousemask(ALL_MOUSE_EVENTS, NULL);
+
     while (1) {
         redraw_ui();
 
     // Print file names in left and right windows
-    update_panel(win1, left_files);
-    update_panel(win2, right_files);
+    update_panel(win1, left_panel.files);
+    update_panel(win2, right_panel.files);
 
 
         int ch = getch();
@@ -356,10 +363,17 @@ int main() {
             endwin();
             init_all();
             update_cmd();
+        } else if (ch == KEY_MOUSE) { // handle mouse events
+            if (getmouse(&event) == OK) {
+                if (event.bstate & BUTTON1_CLICKED) {
+                    mvprintw(0, 0, "BUTTON1_PRESSED at (%d, %d)", event.x, event.y);
+                }
+
+            }
         } else if (ch == '\n' && cmd_len > 0) {
             endwin();  // End ncurses mode
             if (strcmp(cmd, "exit") == 0) exit(0);
-            printf("%s@%s:%s# %s\n", username, unameData.nodename, current_path, cmd);
+            printf("%s@%s:%s# %s\n", username, unameData.nodename, active_panel->path, cmd);
             system(cmd);  // Execute the command
             init_all();
             memset(cmd, 0, CMD_MAX);
@@ -399,7 +413,7 @@ int main() {
 
 
         // Handle scrolling in command line
-        int max_cmd_display = COLS - (strlen(username) + strlen(unameData.nodename) + strlen(current_path) + 6) - 1;
+        int max_cmd_display = COLS - (strlen(username) + strlen(unameData.nodename) + strlen(active_panel->path) + 6) - 1;
         if (cursor_pos - cmd_offset >= max_cmd_display) {
             cmd_offset++;
         } else if (cursor_pos - cmd_offset < 0 && cmd_offset > 0) {

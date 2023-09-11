@@ -11,6 +11,21 @@
 
 #define CMD_MAX 16384
 
+typedef enum {
+    SORT_BY_NAME_ASC = 0,
+    SORT_BY_SIZE_ASC,
+    SORT_BY_TIME_ASC,
+    SORT_BY_NAME_DESC,
+    SORT_BY_SIZE_DESC,
+    SORT_BY_TIME_DESC,
+    SORT_BY_NAME_DIRSFIRST_ASC,
+    SORT_BY_SIZE_DIRSFIRST_ASC,
+    SORT_BY_TIME_DIRSFIRST_ASC,
+    SORT_BY_NAME_DIRSFIRST_DESC,
+    SORT_BY_SIZE_DIRSFIRST_DESC,
+    SORT_BY_TIME_DIRSFIRST_DESC
+} SortOrders;
+
 typedef struct FileNode {
     char* name;
     time_t last_access_time;
@@ -29,6 +44,7 @@ typedef struct FileNode {
 typedef struct PanelProp {
     int selected_index;
     int scroll_index;
+    SortOrders sort_order;
     char path[CMD_MAX];
     FileNode *files;
 } PanelProp;
@@ -60,6 +76,65 @@ enum {
     COLOR_GREEN_ON_BLUE,
     COLOR_RED_ON_BLUE
 };
+
+
+int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order) {
+    int result = 0;
+    int dirs_first = sort_order >= SORT_BY_NAME_DIRSFIRST_ASC;
+
+    if (dirs_first && (a->is_dir != b->is_dir)) {
+        return a->is_dir ? -1 : 1;
+    }
+
+    switch (sort_order % 6) {  // 6 because there are 6 basic sort types
+        case SORT_BY_NAME_ASC:
+        case SORT_BY_NAME_DESC:
+            result = strcmp(a->name, b->name);
+            break;
+        case SORT_BY_SIZE_ASC:
+        case SORT_BY_SIZE_DESC:
+            result = (a->size > b->size) - (a->size < b->size);
+            break;
+        case SORT_BY_TIME_ASC:
+        case SORT_BY_TIME_DESC:
+            result = (a->last_access_time > b->last_access_time) - (a->last_access_time < b->last_access_time);
+            break;
+    }
+
+    // DESC sort? revert result
+    if (sort_order == SORT_BY_NAME_DESC || sort_order == SORT_BY_SIZE_DESC || sort_order == SORT_BY_TIME_DESC ||
+        sort_order == SORT_BY_NAME_DIRSFIRST_DESC || sort_order == SORT_BY_SIZE_DIRSFIRST_DESC || sort_order == SORT_BY_TIME_DIRSFIRST_DESC) {
+        result = -result;
+    }
+
+    return result;
+}
+
+
+void sort_file_nodes(FileNode **head_ref, SortOrders sort_order) {
+    FileNode *sorted = NULL;
+    FileNode *current = *head_ref;
+
+    while (current != NULL) {
+        FileNode *next = current->next;
+
+        if (sorted == NULL || compare_nodes(current, sorted, sort_order) <= 0) {
+            current->next = sorted;
+            sorted = current;
+        } else {
+            FileNode *temp = sorted;
+            while (temp->next != NULL && compare_nodes(current, temp->next, sort_order) > 0) {
+                temp = temp->next;
+            }
+            current->next = temp->next;
+            temp->next = current;
+        }
+
+        current = next;
+    }
+
+    *head_ref = sorted;
+}
 
 
 FileNode* read_directory(const char *path) {
@@ -96,11 +171,19 @@ FileNode* read_directory(const char *path) {
         new_node->is_link = S_ISLNK(file_stat.st_mode);
         new_node->is_link_broken = 0;
 
-        if (new_node->is_link && stat(full_path, &link_stat) != 0) {
-            new_node->is_link_broken = 1;  // Link is broken
-        }
+        if (new_node->is_link) {
+            new_node->link_target = NULL;
+            char target[CMD_MAX];
+            ssize_t len = readlink(full_path, target, sizeof(target) - 1);
+            if (len != -1) {
+                target[len] = '\0';
+                new_node->link_target = strdup(target);
+            }
 
-        new_node->link_target = NULL;  // TODO, fix this, Null-terminate link_target
+            if (stat(full_path, &link_stat) != 0) {
+                new_node->is_link_broken = 1;  // Link is broken
+            }
+        }
 
         if (head == NULL) {
             head = new_node;
@@ -132,7 +215,7 @@ void draw_buttons(int maxY, int maxX) {
     move(maxY - 1, 0);
     clrtoeol();
 
-    char *buttons[] = {"List", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"};
+    char *buttons[] = {"Sort", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"};
     int num_buttons = sizeof(buttons) / sizeof(char *);
 
     int total_width = maxX - (num_buttons - 1);  // Subtract (num_buttons - 1) to account for spaces between buttons
@@ -321,7 +404,7 @@ void update_panel(WINDOW *win, FileNode *head) {
 
 
 
-void init_all() {
+void init_screen() {
     initscr();
     start_color();
     raw();
@@ -361,10 +444,17 @@ int main() {
     getcwd(left_panel.path, sizeof(left_panel.path));
     strcpy(right_panel.path,"/root");
 
-    init_all();
+    left_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
+    right_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
+
 
     left_panel.files = read_directory(left_panel.path);
     right_panel.files = read_directory(right_panel.path);
+
+    sort_file_nodes(&left_panel.files, left_panel.sort_order);
+    sort_file_nodes(&right_panel.files, right_panel.sort_order);
+
+    init_screen();
 
     MEVENT event;
 
@@ -387,7 +477,7 @@ int main() {
             break;
         } else if (ch == KEY_RESIZE) {  // Handle terminal resize
             endwin();
-            init_all();
+            init_screen();
             redraw_ui();
         } else if (ch == KEY_MOUSE) { // handle mouse events
             if (getmouse(&event) == OK) {
@@ -401,18 +491,18 @@ int main() {
             if (strcmp(cmd, "exit") == 0) exit(0);
             printf("%s@%s:%s# %s\n", username, unameData.nodename, active_panel->path, cmd);
             system(cmd);  // Execute the command
-            init_all();
+            init_screen();
             memset(cmd, 0, CMD_MAX);
             cmd_len = cursor_pos = cmd_offset = prompt_length = 0;
         } else if (ch == 12) {  // Ctrl+L
             endwin();
-            init_all();
+            init_screen();
         } else if (ch == 15) {  // Ctrl+O
             endwin();
             initscr();
             raw();
             getch();
-            init_all();
+            init_screen();
         } else if (ch == KEY_BACKSPACE && cursor_pos > 0) {
             memmove(cmd + cursor_pos - 1, cmd + cursor_pos, cmd_len - cursor_pos);
             cmd[--cmd_len] = '\0';

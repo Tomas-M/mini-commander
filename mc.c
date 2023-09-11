@@ -20,7 +20,7 @@ typedef struct FileNode {
     int is_dir;
     int is_executable;
     int is_link;
-    int is_broken; // invalid link
+    int is_link_broken; // invalid link
     int is_selected; // with Insert key
     struct FileNode *next;
 } FileNode;
@@ -56,7 +56,8 @@ enum {
     COLOR_WHITE_ON_BLUE,
     COLOR_BLACK_ON_CYAN,
     COLOR_YELLOW_ON_BLUE,
-    COLOR_GREEN_ON_BLUE
+    COLOR_GREEN_ON_BLUE,
+    COLOR_RED_ON_BLUE
 };
 
 
@@ -87,6 +88,7 @@ FileNode* read_directory(const char *path) {
         new_node->chmod = file_stat.st_mode;
         new_node->chown = file_stat.st_uid;
         new_node->is_dir = S_ISDIR(file_stat.st_mode);
+    //    new_node->is_link_broken = ...;
         new_node->is_link = S_ISLNK(file_stat.st_mode);
         new_node->is_executable = (file_stat.st_mode & S_IXUSR) || (file_stat.st_mode & S_IXGRP) || (file_stat.st_mode & S_IXOTH);
         new_node->is_selected = false;
@@ -238,7 +240,10 @@ void update_panel(WINDOW *win, FileNode *head) {
         wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
         wattroff(win,A_BOLD);
 
-        if (current->is_dir && current->is_link) {
+        if (current->is_link_broken) {
+            prefix = '!';
+            wattron(win, COLOR_PAIR(COLOR_RED_ON_BLUE));
+        } else if (current->is_dir && current->is_link) {
             prefix = '~';
             wattron(win,A_BOLD);
         } else if (current->is_dir) {
@@ -319,6 +324,7 @@ void init_all() {
     init_pair(COLOR_WHITE_ON_BLUE, COLOR_WHITE, COLOR_BLUE);
     init_pair(COLOR_YELLOW_ON_BLUE, COLOR_YELLOW, COLOR_BLUE);
     init_pair(COLOR_GREEN_ON_BLUE, COLOR_GREEN, COLOR_BLUE);
+    init_pair(COLOR_RED_ON_BLUE, COLOR_RED, COLOR_BLUE);
 
     init_pair(COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_CYAN);
 }

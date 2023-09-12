@@ -580,10 +580,20 @@ int main() {
             redraw_ui();
         }
 
-        if (ch == KEY_MOUSE) { // handle mouse events
+        if (ch == KEY_MOUSE) { // handle mouse events. This is somewhat buggy but lets live with that
             if (getmouse(&event) == OK) {
                 if (event.bstate & BUTTON1_CLICKED) {
-                    mvprintw(0, 0, "BUTTON1_PRESSED at (%d, %d)", event.x, event.y);
+                    // Determine which window was clicked and set the active panel
+                    if (wenclose(win1, event.y, event.x)) {
+                        active_panel = &left_panel;
+                    } else if (wenclose(win2, event.y, event.x)) {
+                        active_panel = &right_panel;
+                    }
+
+                    int index = active_panel->scroll_index + event.y - 2;  // -2 to account for the header and window border
+                    if (index > 2 && index < visible_items) {
+                        active_panel->selected_index = index;
+                    }
                 }
 
             }

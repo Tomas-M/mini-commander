@@ -138,27 +138,31 @@ void sort_file_nodes(FileNode **head_ref, SortOrders sort_order) {
 }
 
 
-FileNode* read_directory(const char *path) {
+int update_panel_files(PanelProp *panel) {
     DIR *dir;
     struct dirent *entry;
     struct stat file_stat;
     struct stat link_stat;
     FileNode *head = NULL, *current = NULL;
 
-    if ((dir = opendir(path)) == NULL) {
-        return NULL;
+    panel->files = NULL;
+    panel->files_count = 0;
+
+    if ((dir = opendir(panel->path)) == NULL) {
+        return 0;
     }
 
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0) continue;
-        if (strcmp(entry->d_name, "..") == 0 && strcmp(path, "/") == 0) continue;
+        if (strcmp(entry->d_name, "..") == 0 && strcmp(panel->path, "/") == 0) continue;
 
         char full_path[CMD_MAX];
-        snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+        snprintf(full_path, sizeof(full_path), "%s/%s", panel->path, entry->d_name);
         lstat(full_path, &file_stat);
 
         FileNode *new_node = (FileNode*) malloc(sizeof(FileNode));
 
+        panel->files_count++;
         new_node->next = NULL;
         new_node->name = strdup(entry->d_name);
 
@@ -196,7 +200,8 @@ FileNode* read_directory(const char *path) {
     }
 
     closedir(dir);
-    return head;
+    panel->files = head;
+    return panel->files_count;
 }
 
 void free_file_nodes(FileNode *head) {
@@ -476,9 +481,8 @@ int main() {
     left_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
     right_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
 
-
-    left_panel.files = read_directory(left_panel.path);
-    right_panel.files = read_directory(right_panel.path);
+    update_panel_files(&left_panel);
+    update_panel_files(&right_panel);
 
     sort_file_nodes(&left_panel.files, left_panel.sort_order);
     sort_file_nodes(&right_panel.files, right_panel.sort_order);

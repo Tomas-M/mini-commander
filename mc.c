@@ -73,6 +73,7 @@ enum {
     COLOR_WHITE_ON_BLACK = 1,
     COLOR_WHITE_ON_BLUE,
     COLOR_BLACK_ON_CYAN,
+    COLOR_YELLOW_ON_CYAN,
     COLOR_YELLOW_ON_BLUE,
     COLOR_GREEN_ON_BLUE,
     COLOR_RED_ON_BLUE
@@ -351,7 +352,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 
     int index = panel->scroll_index;
     while (current != NULL && line < height - 3) {
-        int is_selected_item = (index == panel->selected_index && panel == active_panel);
+        int is_active_item = (index == panel->selected_index && panel == active_panel);
         char prefix = ' ';
 
         // reset default color
@@ -415,11 +416,17 @@ void update_panel(WINDOW *win, PanelProp *panel) {
            snprintf(size_str, sizeof(size_str), "UP--DIR");
         }
 
-        if (is_selected_item) {
+        if (is_active_item) {
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
             wattroff(win, A_BOLD);
+
             mvwprintw(win, line, width - 7 - 12 - 1, "|");
             mvwprintw(win, line, width - 12, "|");
+
+            if (current->is_selected) {
+               wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_CYAN));
+               wattron(win, A_BOLD);
+            }
         }
 
         int name_width = width - 12 - 7 - 3;
@@ -457,6 +464,7 @@ void init_screen() {
     init_pair(COLOR_GREEN_ON_BLUE, COLOR_GREEN, COLOR_BLUE);
     init_pair(COLOR_RED_ON_BLUE, COLOR_RED, COLOR_BLUE);
 
+    init_pair(COLOR_YELLOW_ON_CYAN, COLOR_YELLOW, COLOR_CYAN);
     init_pair(COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_CYAN);
 }
 

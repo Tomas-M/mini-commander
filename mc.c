@@ -504,22 +504,61 @@ int main() {
         // Print file names in left and right windows
         update_panel(win1, &left_panel);
         update_panel(win2, &right_panel);
+        int visible_items = getmaxy(win1) - 5;
 
         int ch = getch();
+
         if (ch == KEY_F(10)) {
             break;
-        } else if (ch == KEY_RESIZE) {  // Handle terminal resize
+        }
+
+
+        if (ch == 27) {  // Escape character
+            getch();  // Discard the '[' character
+
+            int num = 0;
+            ch = getch();
+            while (ch == '[') {
+                ch = getch();
+            }
+            while (ch >= '0' && ch <= '9') {  // Read numbers
+                num = num * 10 + (ch - '0');
+                ch = getch();
+            }
+
+            if (ch == '~') {
+                switch (num) {
+                    case 1:
+                        ch = KEY_HOME;
+                        break;
+                    case 2:
+                        ch = KEY_IC;
+                        break;
+                    case 4:
+                        ch = KEY_END;
+                        break;
+                    default:
+                        break;
+                }
+            }
+        }
+
+        if (ch == KEY_RESIZE) {  // Handle terminal resize
             endwin();
             init_screen();
             redraw_ui();
-        } else if (ch == KEY_MOUSE) { // handle mouse events
+        }
+
+        if (ch == KEY_MOUSE) { // handle mouse events
             if (getmouse(&event) == OK) {
                 if (event.bstate & BUTTON1_CLICKED) {
                     mvprintw(0, 0, "BUTTON1_PRESSED at (%d, %d)", event.x, event.y);
                 }
 
             }
-        } else if (ch == '\n' && cmd_len > 0) {
+        }
+
+        if (ch == '\n' && cmd_len > 0) {
             endwin();  // End ncurses mode
             if (strcmp(cmd, "exit") == 0) exit(0);
             printf("%s@%s:%s# %s\n", username, unameData.nodename, active_panel->path, cmd);
@@ -527,47 +566,121 @@ int main() {
             init_screen();
             memset(cmd, 0, CMD_MAX);
             cmd_len = cursor_pos = cmd_offset = prompt_length = 0;
-        } else if (ch == 12) {  // Ctrl+L
+        }
+
+        if (ch == 12) {  // Ctrl+L
             endwin();
             init_screen();
-        } else if (ch == 15) {  // Ctrl+O
+        }
+
+        if (ch == 15) {  // Ctrl+O
             endwin();
             initscr();
             raw();
             getch();
             init_screen();
-        } else if (ch == KEY_BACKSPACE && cursor_pos > 0) {
+        }
+
+        if (ch == KEY_BACKSPACE && cursor_pos > 0) {
             memmove(cmd + cursor_pos - 1, cmd + cursor_pos, cmd_len - cursor_pos);
             cmd[--cmd_len] = '\0';
             cursor_pos--;
-        } else if (ch == KEY_DC && cursor_pos < cmd_len) {
+        }
+
+        if (ch == KEY_DC && cursor_pos < cmd_len) {
             memmove(cmd + cursor_pos, cmd + cursor_pos + 1, cmd_len - cursor_pos - 1);
             cmd[--cmd_len] = '\0';
-        } else if (ch == KEY_LEFT) {
+        }
+
+        if (ch == KEY_LEFT) {
             if (cursor_pos > 0) {
                 cursor_pos--;
             } else if (cmd_offset > 0) {
                 cmd_offset--;
             }
-        } else if (ch == KEY_RIGHT && cursor_pos < cmd_len) {
+        }
+
+        if (ch == KEY_RIGHT && cursor_pos < cmd_len) {
             cursor_pos++;
-        } else if (ch == KEY_UP) {
+        }
+
+        if (ch == KEY_UP) {
             active_panel->selected_index--;
-            if (active_panel->selected_index < 0) {
-                    active_panel->selected_index = 0;
-            }
-        } else if (ch == KEY_DOWN) {
+        }
+
+        if (ch == KEY_DOWN) {
             active_panel->selected_index++;
-        } else if (ch >= 32 && ch <= 126 && cmd_len < CMD_MAX - 1) {
+        }
+
+        if (ch == KEY_PPAGE) {  // Handle PgUp key
+            active_panel->selected_index -= visible_items;
+            if (active_panel->selected_index < 0) {
+                active_panel->selected_index = 0;
+            }
+        }
+
+        if (ch == KEY_NPAGE) {  // Handle PgDn key
+            active_panel->selected_index += visible_items;
+            if (active_panel->selected_index > active_panel->files_count - 1) {
+                active_panel->selected_index = active_panel->files_count - 1;
+            }
+        }
+
+        if (ch == KEY_HOME) {  // Handle Home key
+            active_panel->selected_index = 0;
+        }
+
+        if (ch == KEY_END) {  // Handle End key
+            active_panel->selected_index = active_panel->files_count - 1;
+        }
+
+        if (ch == KEY_IC) {  // Insert key
+            FileNode *current = active_panel->files;
+            for (int i = 0; i < active_panel->selected_index && current != NULL; i++) {
+                current = current->next;
+            }
+            if (current) {
+                current->is_selected = true;
+            }
+            active_panel->selected_index++;
+        }
+
+
+        if (ch >= 32 && ch <= 126 && cmd_len < CMD_MAX - 1) {
             memmove(cmd + cursor_pos + 1, cmd + cursor_pos, cmd_len - cursor_pos);
             cmd[cursor_pos] = ch;
             cmd[++cmd_len] = '\0';
             cursor_pos++;
-        } else if (ch == '\t') {
+        }
+
+        if (ch == '\t') {
             if (active_panel == &left_panel) {
                 active_panel = &right_panel;
             } else {
                 active_panel = &left_panel;
+            }
+        }
+
+        // make sure scroll does not overflow
+        if (active_panel->selected_index < 0) {
+                active_panel->selected_index = 0;
+        }
+        if (active_panel->selected_index > active_panel->files_count - 1) {
+                active_panel->selected_index = active_panel->files_count - 1;
+        }
+
+        // Handle scrolling in files
+        if (active_panel->selected_index < active_panel->scroll_index) {
+            // Scroll up to place the selected item in the middle or at the top if near the start
+            active_panel->scroll_index = active_panel->selected_index - visible_items / 2;
+            if (active_panel->scroll_index < 0) {
+                active_panel->scroll_index = 0;
+            }
+        } else if (active_panel->selected_index > active_panel->scroll_index + visible_items - 1) {
+            // Scroll down to place the selected item in the middle or at the bottom if near the end
+            active_panel->scroll_index = active_panel->selected_index - visible_items / 2;
+            if (active_panel->selected_index > active_panel->files_count - visible_items / 2) {
+                active_panel->scroll_index = active_panel->files_count - visible_items;
             }
         }
 

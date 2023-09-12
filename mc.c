@@ -324,6 +324,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     int width = getmaxx(win) - 2;
     int height = getmaxy(win);
     int visible_items = height - 4;
+    int name_width = width - 12 - 7 - 3;
     char info[CMD_MAX];
 
     // Get the current year
@@ -442,8 +443,6 @@ void update_panel(WINDOW *win, PanelProp *panel) {
            }
         }
 
-        int name_width = width - 12 - 7 - 3;
-
         mvwhline(win, line, 1, ' ', name_width + 1);
         mvwprintw(win, line, 1, "%c", prefix);
         mvwaddnstr(win, line, 2, current->name, name_width);
@@ -459,6 +458,13 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // reset color to default
     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
     wattroff(win, A_BOLD);
+
+    while(line < height - 3) {
+        mvwhline(win, line, 1, ' ', name_width);
+        mvwprintw(win, line, width - 7 - 12, "       ");
+        mvwprintw(win, line, width - 12 + 1, "            ");
+        line++;
+    }
 
     // print info for active file
     mvwprintw(win, height - 2, 1, "%-*s", width - 1, info);
@@ -596,12 +602,60 @@ int main() {
                     }
                 }
 
+                if (event.bstate & BUTTON1_DOUBLE_CLICKED) {
+                    ch = '\n';
+                }
             }
         }
 
-        if (ch == '\n' && cmd_len > 0) {
-            endwin();  // End ncurses mode
+        if (ch == '\n')
+        {
+            if (cmd_len == 0) {
+                FileNode *current = active_panel->files;
+                int index = 0;
+                while (current != NULL && index < active_panel->selected_index) {
+                    current = current->next;
+                    index++;
+                }
+
+                if (current) {
+                   if (current->is_dir) {
+                       if (strcmp(current->name, "..") == 0) {
+                           // Go one directory up
+                           char *lastSlash = strrchr(active_panel->path, '/');
+                           if (lastSlash) {
+                               if (lastSlash == active_panel->path) {
+                                   // We're at the root directory
+                                   *(lastSlash + 1) = '\0';  // Keep the root slash
+                               } else {
+                                   *lastSlash = '\0';
+                               }
+                           }
+                       } else {
+                           // Dive into the selected directory
+                           if (strcmp(active_panel->path, "/") != 0) {
+                               // Not root, so add a slash
+                               strncat(active_panel->path, "/", sizeof(active_panel->path) - strlen(active_panel->path) - 1);
+                           }
+                           strncat(active_panel->path, current->name, sizeof(active_panel->path) - strlen(active_panel->path) - 1);
+                       }
+
+                       // Update the file list for the new directory
+                       update_panel_files(active_panel);
+                       sort_file_nodes(&active_panel->files, active_panel->sort_order);
+
+                       // Reset the selected and scroll indices
+                       active_panel->selected_index = 0; // TODO, we should set selected index to upper dir name and possibly scroll it to center
+                       active_panel->scroll_index = 0;
+                   } else if (current->is_executable && cmd_len == 0) {
+                       snprintf(cmd, CMD_MAX, "%s/%s", active_panel->path, current->name);
+                   }
+                }
+            }
+
             if (strcmp(cmd, "exit") == 0) exit(0);
+
+            endwin();  // End ncurses mode
             printf("%s@%s:%s# %s\n", username, unameData.nodename, active_panel->path, cmd);
             system(cmd);  // Execute the command
             init_screen();

@@ -324,6 +324,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     int width = getmaxx(win) - 2;
     int height = getmaxy(win);
     int visible_items = height - 4;
+    char info[CMD_MAX];
 
     // Get the current year
     time_t now = time(NULL);
@@ -350,9 +351,10 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         current = current->next;
     }
 
+    FileNode * active_item = NULL;
     int index = panel->scroll_index;
     while (current != NULL && line < height - 3) {
-        int is_active_item = (index == panel->selected_index && panel == active_panel);
+        int is_active_item = (index == panel->selected_index);
         char prefix = ' ';
 
         // reset default color
@@ -412,26 +414,40 @@ void update_panel(WINDOW *win, PanelProp *panel) {
             }
         }
 
-        if (current->is_dir && strcmp(current->name, "..") == 0) {
+        int updir = (current->is_dir && strcmp(current->name, "..") == 0);
+        if (updir) {
            snprintf(size_str, sizeof(size_str), "UP--DIR");
         }
 
         if (is_active_item) {
-            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
-            wattroff(win, A_BOLD);
-
-            mvwprintw(win, line, width - 7 - 12 - 1, "|");
-            mvwprintw(win, line, width - 12, "|");
-
-            if (current->is_selected) {
-               wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_CYAN));
-               wattron(win, A_BOLD);
+            if (updir) {
+                snprintf(info, sizeof(info), "UP--DIR");
+            } else if (current->is_link) {
+                snprintf(info, sizeof(info), "-> %s", current->link_target);
+            } else {
+                snprintf(info, sizeof(info), "%c%s", prefix, current->name);
             }
+
+            if (panel == active_panel) {
+                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+                wattroff(win, A_BOLD);
+
+                mvwprintw(win, line, width - 7 - 12 - 1, "|");
+                mvwprintw(win, line, width - 12, "|");
+
+                if (current->is_selected) {
+                   wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_CYAN));
+                   wattron(win, A_BOLD);
+                }
+           }
         }
 
         int name_width = width - 12 - 7 - 3;
 
-        mvwprintw(win, line, 1, "%c%-*s", prefix, name_width, current->name);
+        mvwhline(win, line, 1, ' ', name_width + 1);
+        mvwprintw(win, line, 1, "%c", prefix);
+        mvwaddnstr(win, line, 2, current->name, name_width);
+
         mvwprintw(win, line, width - 7 - 12, "%7s", size_str);
         mvwprintw(win, line, width - 12 + 1, "%12s", date_str);
 
@@ -443,6 +459,9 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // reset color to default
     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
     wattroff(win, A_BOLD);
+
+    // print info for active file
+    mvwprintw(win, height - 2, 1, "%-*s", width - 1, info);
 
     wrefresh(win);
     cursor_to_cmd();

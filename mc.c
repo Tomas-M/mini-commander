@@ -335,12 +335,12 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     mvwhline(win, height - 3, 1, '-', width);
 
     // Header of the file list
-    wattron(win,A_BOLD);
+    wattron(win, A_BOLD);
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
     mvwprintw(win, line, 1, "%*s%s", ((width - 12 - 7 - 2) / 2) - (strlen("Name") / 2), "", "Name");
     mvwprintw(win, line, width - 12 - 7 + 1, "%s", "Size");
     mvwprintw(win, line, width - 7 - 4, "%s", "Modify time");
-    wattroff(win,A_BOLD);
+    wattroff(win, A_BOLD);
 
     line++;
 
@@ -356,26 +356,30 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 
         // reset default color
         wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-        wattroff(win,A_BOLD);
+        wattroff(win, A_BOLD);
 
         if (current->is_link_broken) {
             prefix = '!';
             wattron(win, COLOR_PAIR(COLOR_RED_ON_BLUE));
-            wattron(win,A_BOLD);
+            wattron(win, A_BOLD);
         } else if (current->is_dir && current->is_link) {
             prefix = '~';
-            wattron(win,A_BOLD);
+            wattron(win, A_BOLD);
         } else if (current->is_dir) {
             prefix = '/';
-            wattron(win,A_BOLD);
+            wattron(win, A_BOLD);
         } else if (current->is_link) {
             prefix = '@';
         } else if (current->is_executable) {
             prefix = '*';
             wattron(win, COLOR_PAIR(COLOR_GREEN_ON_BLUE));
-            wattron(win,A_BOLD);
+            wattron(win, A_BOLD);
         }
 
+        if (current->is_selected) {
+            wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
+            wattron(win, A_BOLD);
+        }
 
         char date_str[13];
         struct tm *tm = localtime(&current->mtime);
@@ -431,7 +435,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 
     // reset color to default
     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-    wattroff(win,A_BOLD);
+    wattroff(win, A_BOLD);
 
     wrefresh(win);
     cursor_to_cmd();
@@ -639,8 +643,8 @@ int main() {
             for (int i = 0; i < active_panel->selected_index && current != NULL; i++) {
                 current = current->next;
             }
-            if (current) {
-                current->is_selected = true;
+            if (current && strcmp(current->name, "..") != 0) {
+                current->is_selected = !current->is_selected;
             }
             active_panel->selected_index++;
         }

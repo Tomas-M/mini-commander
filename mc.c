@@ -84,6 +84,10 @@ int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order) {
     int result = 0;
     int dirs_first = sort_order >= SORT_BY_NAME_DIRSFIRST_ASC;
 
+    // Check if either node is ".."
+    if (strcmp(a->name, "..") == 0) return -1;
+    if (strcmp(b->name, "..") == 0) return 1;
+
     if (dirs_first && (a->is_dir != b->is_dir)) {
         return a->is_dir ? -1 : 1;
     }

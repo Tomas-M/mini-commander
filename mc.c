@@ -46,6 +46,7 @@ typedef struct PanelProp {
     int scroll_index;
     SortOrders sort_order;
     char path[CMD_MAX];
+    int files_count;
     FileNode *files;
 } PanelProp;
 
@@ -311,17 +312,24 @@ void update_cmd() {
 }
 
 
-void update_panel(WINDOW *win, FileNode *head) {
-    FileNode *current = head;
+void update_panel(WINDOW *win, PanelProp *panel) {
+    FileNode *current = panel->files;
     int line = 1;  // Start from the second row to avoid the border
     int width = getmaxx(win) - 2;
     int height = getmaxy(win);
+    int visible_items = height - 4;
 
     // Get the current year
     time_t now = time(NULL);
     struct tm *current_tm = localtime(&now);
     int current_year = current_tm->tm_year;
 
+    // Fill separator columns
+    mvwvline(win, 1, width - 12, '|', height -3);
+    mvwvline(win, 1, width - 7 - 12 - 1, '|', height -3);
+    mvwhline(win, height - 3, 1, '-', width);
+
+    // Header of the file list
     wattron(win,A_BOLD);
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
     mvwprintw(win, line, 1, "%*s%s", ((width - 12 - 7 - 2) / 2) - (strlen("Name") / 2), "", "Name");
@@ -331,15 +339,24 @@ void update_panel(WINDOW *win, FileNode *head) {
 
     line++;
 
+    // Ignore first items based on the scroll index
+    for (int i = 0; i < panel->scroll_index && current != NULL; i++) {
+        current = current->next;
+    }
+
+    int index = panel->scroll_index;
     while (current != NULL && line < height - 3) {
+        int is_selected_item = (index == panel->selected_index && panel == active_panel);
         char prefix = ' ';
-        // set default color
+
+        // reset default color
         wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
         wattroff(win,A_BOLD);
 
         if (current->is_link_broken) {
             prefix = '!';
             wattron(win, COLOR_PAIR(COLOR_RED_ON_BLUE));
+            wattron(win,A_BOLD);
         } else if (current->is_dir && current->is_link) {
             prefix = '~';
             wattron(win,A_BOLD);
@@ -353,6 +370,7 @@ void update_panel(WINDOW *win, FileNode *head) {
             wattron(win, COLOR_PAIR(COLOR_GREEN_ON_BLUE));
             wattron(win,A_BOLD);
         }
+
 
         char date_str[13];
         struct tm *tm = localtime(&current->mtime);
@@ -388,23 +406,27 @@ void update_panel(WINDOW *win, FileNode *head) {
            snprintf(size_str, sizeof(size_str), "UP--DIR");
         }
 
+        if (is_selected_item) {
+            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+            wattroff(win, A_BOLD);
+            mvwprintw(win, line, width - 7 - 12 - 1, "|");
+            mvwprintw(win, line, width - 12, "|");
+        }
+
         int name_width = width - 12 - 7 - 3;
 
         mvwprintw(win, line, 1, "%c%-*s", prefix, name_width, current->name);
         mvwprintw(win, line, width - 7 - 12, "%7s", size_str);
         mvwprintw(win, line, width - 12 + 1, "%12s", date_str);
+
         line++;
+        index++;
         current = current->next;
     }
 
     // reset color to default
     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
     wattroff(win,A_BOLD);
-
-    // Fill separator columns
-    mvwvline(win, 1, width - 12, '|', height -3);
-    mvwvline(win, 1, width - 7 - 12 - 1, '|', height -3);
-    mvwhline(win, height - 3, 1, '-', width);
 
     wrefresh(win);
     cursor_to_cmd();
@@ -476,8 +498,8 @@ int main() {
         update_cmd();
 
         // Print file names in left and right windows
-        update_panel(win1, left_panel.files);
-        update_panel(win2, right_panel.files);
+        update_panel(win1, &left_panel);
+        update_panel(win2, &right_panel);
 
         int ch = getch();
         if (ch == KEY_F(10)) {
@@ -525,6 +547,13 @@ int main() {
             }
         } else if (ch == KEY_RIGHT && cursor_pos < cmd_len) {
             cursor_pos++;
+        } else if (ch == KEY_UP) {
+            active_panel->selected_index--;
+            if (active_panel->selected_index < 0) {
+                    active_panel->selected_index = 0;
+            }
+        } else if (ch == KEY_DOWN) {
+            active_panel->selected_index++;
         } else if (ch >= 32 && ch <= 126 && cmd_len < CMD_MAX - 1) {
             memmove(cmd + cursor_pos + 1, cmd + cursor_pos, cmd_len - cursor_pos);
             cmd[cursor_pos] = ch;

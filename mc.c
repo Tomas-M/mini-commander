@@ -71,6 +71,7 @@ int cmd_len = 0;
 
 enum {
     COLOR_WHITE_ON_BLACK = 1,
+    COLOR_BLACK_ON_WHITE,
     COLOR_WHITE_ON_BLUE,
     COLOR_BLACK_ON_CYAN,
     COLOR_YELLOW_ON_CYAN,
@@ -459,9 +460,14 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         current = current->next;
     }
 
+    wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+    wattroff(win, A_BOLD);
+    mvwprintw(win, 0, 3, " %s ", panel->path);
+
     // reset color to default
     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-    wattroff(win, A_BOLD);
+
+    mvwhline(win, 0, strlen(panel->path) + 5, 'x', width - strlen(panel->path) - 4);
 
     while(line < height - 3) {
         mvwhline(win, line, 1, ' ', name_width);
@@ -487,6 +493,7 @@ void init_screen() {
     curs_set(1);
 
     init_pair(COLOR_WHITE_ON_BLACK, COLOR_WHITE, COLOR_BLACK);
+    init_pair(COLOR_BLACK_ON_WHITE, COLOR_BLACK, COLOR_WHITE);
 
     init_pair(COLOR_WHITE_ON_BLUE, COLOR_WHITE, COLOR_BLUE);
     init_pair(COLOR_YELLOW_ON_BLUE, COLOR_YELLOW, COLOR_BLUE);
@@ -614,6 +621,8 @@ int main() {
 
         if (ch == '\n')
         {
+            char* last_subdir = NULL;
+
             if (cmd_len == 0) {
                 FileNode *current = active_panel->files;
                 int index = 0;
@@ -624,47 +633,40 @@ int main() {
 
                 if (current) {
                    if (current->is_dir) {
+
                        if (strcmp(current->name, "..") == 0) {
-                           // Go one directory up
-                           char *lastSlash = strrchr(active_panel->path, '/');
-                           if (lastSlash) {
-                               if (lastSlash == active_panel->path) {
-                                   // We're at the root directory
-                                   *(lastSlash + 1) = '\0';  // Keep the root slash
-                               } else {
-                                   *lastSlash = '\0';
-                               }
-                           }
+                           // Go back to upper dir
+                           char * last_slash = strrchr(active_panel->path, '/');
+                           int is_root = (last_slash == active_panel->path);
+                           memset(last_slash + is_root, 0, strlen(last_slash));
                        } else {
                            // Dive into the selected directory
-                           if (strcmp(active_panel->path, "/") != 0) {
-                               // Not root, so add a slash
-                               strncat(active_panel->path, "/", sizeof(active_panel->path) - strlen(active_panel->path) - 1);
-                           }
-                           strncat(active_panel->path, current->name, sizeof(active_panel->path) - strlen(active_panel->path) - 1);
+                           if (strlen(active_panel->path)>1) strcat(active_panel->path, "/");
+                           strcat(active_panel->path, current->name);
                        }
 
                        // Update the file list for the new directory
                        update_panel_files(active_panel);
                        sort_file_nodes(&active_panel->files, active_panel->sort_order);
 
-                       // Reset the selected and scroll indices
-                       active_panel->selected_index = 0; // TODO, we should set selected index to upper dir name and possibly scroll it to center
-                       active_panel->scroll_index = 0;
+                       active_panel->selected_index = 0; // TODO make it zero when dive into dir, but when going up one dir, make active (selected) the previous name
+                       active_panel->scroll_index = 0; // TODO for going back, make it scroll so the active item is as most in the middle as possible.
                    } else if (current->is_executable && cmd_len == 0) {
                        snprintf(cmd, CMD_MAX, "%s/%s", active_panel->path, current->name);
                    }
                 }
             }
 
-            if (strcmp(cmd, "exit") == 0) exit(0);
+            if (cmd_len > 0) {
+                if (strcmp(cmd, "exit") == 0) exit(0);
 
-            endwin();  // End ncurses mode
-            printf("%s@%s:%s# %s\n", username, unameData.nodename, active_panel->path, cmd);
-            system(cmd);  // Execute the command
-            init_screen();
-            memset(cmd, 0, CMD_MAX);
-            cmd_len = cursor_pos = cmd_offset = prompt_length = 0;
+                endwin();  // End ncurses mode
+                printf("%s@%s:%s# %s\n", username, unameData.nodename, active_panel->path, cmd);
+                system(cmd);  // Execute the command
+                init_screen();
+                memset(cmd, 0, CMD_MAX);
+                cmd_len = cursor_pos = cmd_offset = prompt_length = 0;
+            }
         }
 
         if (ch == 12) {  // Ctrl+L

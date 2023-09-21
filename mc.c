@@ -35,6 +35,7 @@ typedef struct FileNode {
     int is_dir;
     int is_executable;
     int is_link;
+    int is_link_to_dir;  // link points to a directory
     int is_link_broken; // invalid link
     char* link_target;
     int is_selected; // with Insert key
@@ -46,6 +47,7 @@ typedef struct PanelProp {
     int scroll_index;
     SortOrders sort_order;
     char path[CMD_MAX];
+    char last_dir[CMD_MAX];
     int files_count;
     FileNode *files;
 } PanelProp;
@@ -89,9 +91,12 @@ int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order) {
     if (strcmp(a->name, "..") == 0) return -1;
     if (strcmp(b->name, "..") == 0) return 1;
 
-    if (dirs_first && (a->is_dir != b->is_dir)) {
-        return a->is_dir ? -1 : 1;
-    }
+int a_is_dir_or_link_to_dir = a->is_dir || (a->is_link && !a->is_link_broken && a->is_link_to_dir);
+int b_is_dir_or_link_to_dir = b->is_dir || (b->is_link && !b->is_link_broken && b->is_link_to_dir);
+
+if (dirs_first && (a_is_dir_or_link_to_dir != b_is_dir_or_link_to_dir)) {
+    return a_is_dir_or_link_to_dir ? -1 : 1;
+}
 
     switch (sort_order % 6) {  // 6 because there are 6 basic sort types
         case SORT_BY_NAME_ASC:
@@ -193,6 +198,8 @@ int update_panel_files(PanelProp *panel) {
 
             if (stat(full_path, &link_stat) != 0) {
                 new_node->is_link_broken = 1;  // Link is broken
+            } else {
+                new_node->is_link_to_dir = S_ISDIR(link_stat.st_mode);
             }
         }
 
@@ -467,7 +474,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // reset color to default
     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
 
-    mvwhline(win, 0, strlen(panel->path) + 5, 'x', width - strlen(panel->path) - 4);
+    mvwhline(win, 0, strlen(panel->path) + 5, '-', width - strlen(panel->path) - 4);
 
     while(line < height - 3) {
         mvwhline(win, line, 1, ' ', name_width);
@@ -621,8 +628,6 @@ int main() {
 
         if (ch == '\n')
         {
-            char* last_subdir = NULL;
-
             if (cmd_len == 0) {
                 FileNode *current = active_panel->files;
                 int index = 0;
@@ -633,10 +638,14 @@ int main() {
 
                 if (current) {
                    if (current->is_dir) {
-
                        if (strcmp(current->name, "..") == 0) {
-                           // Go back to upper dir
+                           // Store the last directory name before going up
                            char * last_slash = strrchr(active_panel->path, '/');
+                           strncpy(active_panel->last_dir, last_slash + 1, CMD_MAX - 1);
+                           active_panel->last_dir[CMD_MAX - 1] = '\0';  // Null-terminate just in case
+
+                           // Go back to upper dir
+                           last_slash = strrchr(active_panel->path, '/');
                            int is_root = (last_slash == active_panel->path);
                            memset(last_slash + is_root, 0, strlen(last_slash));
                        } else {
@@ -649,10 +658,26 @@ int main() {
                        update_panel_files(active_panel);
                        sort_file_nodes(&active_panel->files, active_panel->sort_order);
 
-                       active_panel->selected_index = 0; // TODO make it zero when dive into dir, but when going up one dir, make active (selected) the previous name
+                       if (strcmp(current->name, "..") == 0 || strcmp(current->name, "/") == 0) {
+                           // Search for the last directory and set it as the active item
+                           FileNode *node = active_panel->files;
+                           int index = 0;
+                           while (node) {
+                               if (strcmp(node->name, active_panel->last_dir) == 0) {
+                                   active_panel->selected_index = index;
+                                   break;
+                               }
+                               node = node->next;
+                               index++;
+                           }
+                       } else {
+                           active_panel->selected_index = 0;
+                       }
+
                        active_panel->scroll_index = 0; // TODO for going back, make it scroll so the active item is as most in the middle as possible.
                    } else if (current->is_executable && cmd_len == 0) {
                        snprintf(cmd, CMD_MAX, "%s/%s", active_panel->path, current->name);
+                       cmd_len = strlen(cmd);
                    }
                 }
             }

@@ -91,12 +91,9 @@ int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order) {
     if (strcmp(a->name, "..") == 0) return -1;
     if (strcmp(b->name, "..") == 0) return 1;
 
-int a_is_dir_or_link_to_dir = a->is_dir || (a->is_link && !a->is_link_broken && a->is_link_to_dir);
-int b_is_dir_or_link_to_dir = b->is_dir || (b->is_link && !b->is_link_broken && b->is_link_to_dir);
-
-if (dirs_first && (a_is_dir_or_link_to_dir != b_is_dir_or_link_to_dir)) {
-    return a_is_dir_or_link_to_dir ? -1 : 1;
-}
+    if (dirs_first && (a->is_dir != b->is_dir)) {
+        return a->is_dir ? -1 : 1;
+    }
 
     switch (sort_order % 6) {  // 6 because there are 6 basic sort types
         case SORT_BY_NAME_ASC:
@@ -171,7 +168,7 @@ int update_panel_files(PanelProp *panel) {
         snprintf(full_path, sizeof(full_path), "%s/%s", panel->path, entry->d_name);
         lstat(full_path, &file_stat);
 
-        FileNode *new_node = (FileNode*) malloc(sizeof(FileNode));
+        FileNode *new_node = (FileNode*) calloc(1,sizeof(FileNode));
 
         panel->files_count++;
         new_node->next = NULL;
@@ -186,6 +183,7 @@ int update_panel_files(PanelProp *panel) {
         new_node->is_selected = false;
         new_node->is_link = S_ISLNK(file_stat.st_mode);
         new_node->is_link_broken = 0;
+        new_node->is_link_to_dir = 0;
 
         if (new_node->is_link) {
             new_node->link_target = NULL;
@@ -202,6 +200,8 @@ int update_panel_files(PanelProp *panel) {
                 new_node->is_link_to_dir = S_ISDIR(link_stat.st_mode);
             }
         }
+
+        if (new_node->is_link_to_dir) new_node->is_dir = 1;
 
         if (head == NULL) {
             head = new_node;
@@ -378,7 +378,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
             prefix = '!';
             wattron(win, COLOR_PAIR(COLOR_RED_ON_BLUE));
             wattron(win, A_BOLD);
-        } else if (current->is_dir && current->is_link) {
+        } else if (current->is_link_to_dir) {
             prefix = '~';
             wattron(win, A_BOLD);
         } else if (current->is_dir) {
@@ -561,6 +561,14 @@ int main() {
         update_panel(win2, &right_panel);
         int visible_items = getmaxy(win1) - 5;
 
+        // get current file under cursor
+        FileNode *current = active_panel->files;
+        int index = 0;
+        while (current != NULL && index < active_panel->selected_index) {
+            current = current->next;
+            index++;
+        }
+
         int ch = getch();
 
         if (ch == KEY_F(10)) {
@@ -591,6 +599,13 @@ int main() {
                         break;
                     case 4:
                         ch = KEY_END;
+                        break;
+                    case 13:
+                        if (current) {
+                            if (current->is_dir) {
+                                ch = '\n';
+                            }
+                        }
                         break;
                     default:
                         break;
@@ -629,13 +644,6 @@ int main() {
         if (ch == '\n')
         {
             if (cmd_len == 0) {
-                FileNode *current = active_panel->files;
-                int index = 0;
-                while (current != NULL && index < active_panel->selected_index) {
-                    current = current->next;
-                    index++;
-                }
-
                 if (current) {
                    if (current->is_dir) {
                        if (strcmp(current->name, "..") == 0) {

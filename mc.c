@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <sys/time.h>
 
 #define CMD_MAX 16384
 
@@ -63,6 +64,10 @@ WINDOW *win2;
 struct utsname unameData;
 struct passwd *pw;
 const char *username;
+
+struct timeval last_click_time = {0};
+struct timeval current_time = {0};
+struct timeval diff_time = {0};
 
 int cursor_pos = 0;
 int cmd_offset = 0;
@@ -493,6 +498,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 
 void init_screen() {
     initscr();
+    mouseinterval(50);
     start_color();
     raw();
     keypad(stdscr, TRUE);
@@ -619,9 +625,9 @@ int main() {
             redraw_ui();
         }
 
-        if (ch == KEY_MOUSE) { // handle mouse events. This is somewhat buggy but lets live with that
+        if (ch == KEY_MOUSE) { // handle mouse events
             if (getmouse(&event) == OK) {
-                if (event.bstate & BUTTON1_CLICKED) {
+                if (event.bstate & BUTTON1_PRESSED) {
                     // Determine which window was clicked and set the active panel
                     if (wenclose(win1, event.y, event.x)) {
                         active_panel = &left_panel;
@@ -629,14 +635,21 @@ int main() {
                         active_panel = &right_panel;
                     }
 
-                    int index = active_panel->scroll_index + event.y - 2;  // -2 to account for the header and window border
-                    if (index > 2 && index < visible_items) {
+                    // Select item by mouse click
+                    int index = active_panel->scroll_index + event.y - 2;
+                    if (index >= 0 && index < active_panel->files_count) {
                         active_panel->selected_index = index;
                     }
                 }
 
-                if (event.bstate & BUTTON1_DOUBLE_CLICKED) {
-                    ch = '\n';
+                if (event.bstate & BUTTON1_RELEASED || event.bstate & BUTTON1_CLICKED || event.bstate & BUTTON1_DOUBLE_CLICKED) {
+                   gettimeofday(&current_time, NULL);
+                   timersub(&current_time, &last_click_time, &diff_time);
+                   if (diff_time.tv_sec == 0 && diff_time.tv_usec < 300000) {
+                       // Double click finished
+                       ch = '\n';
+                   }
+                   last_click_time = current_time;
                 }
             }
         }

@@ -482,7 +482,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     mvwhline(win, 0, strlen(panel->path) + 5, '-', width - strlen(panel->path) - 4);
 
     while(line < height - 3) {
-        mvwhline(win, line, 1, ' ', name_width);
+        mvwhline(win, line, 1, ' ', name_width + 1);
         mvwprintw(win, line, width - 7 - 12, "       ");
         mvwprintw(win, line, width - 12 + 1, "            ");
         line++;

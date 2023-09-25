@@ -651,6 +651,13 @@ int main() {
                    }
                    last_click_time = current_time;
                 }
+
+                // Handle mouse wheel scrolling
+                if (event.bstate & BUTTON4_PRESSED) {
+                    active_panel->selected_index--;
+                } else if (event.bstate & BUTTON5_PRESSED) {
+                    active_panel->selected_index++;
+                }
             }
         }
 

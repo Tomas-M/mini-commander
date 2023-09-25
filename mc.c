@@ -513,7 +513,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     }
 
     // print info for active file
-    mvwprintw(win, height - 2, 1, "%-*s", width - 1, SHORTEN(info,width - 1));
+    mvwprintw(win, height - 2, 1, "%-*s", width, SHORTEN(info,width));
 
     wrefresh(win);
     cursor_to_cmd();

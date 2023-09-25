@@ -496,7 +496,12 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         current = current->next;
     }
 
-    wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+    // path goes to window title
+    if ((win == win1 && active_panel == &left_panel) || (win == win2 && active_panel == &right_panel)) {
+       wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+    } else {
+       wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+    }
     wattroff(win, A_BOLD);
     mvwprintw(win, 0, 3, " %s ", SHORTEN(panel->path, name_width + 12 + 7 - 2));
 

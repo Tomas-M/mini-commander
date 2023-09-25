@@ -335,6 +335,29 @@ void update_cmd() {
 }
 
 
+void shorten(char *name, int width, char *result) {
+    int length = strlen(name);
+    if (length <= width) {
+        strcpy(result, name);
+    } else {
+        int halfWidth = (width - 1) / 2;
+        strncpy(result, name, halfWidth);
+        result[halfWidth] = '~';
+        strncpy(result + halfWidth + 1, name + length - (width - 1 - halfWidth), width - 1 - halfWidth);
+        result[width] = '\0';
+    }
+}
+
+
+// Macro to use shorten inline
+#define SHORTEN(name, width) ({ \
+    static char result_buf[CMD_MAX] = {0}; \
+    shorten((name), (width), result_buf); \
+    result_buf; \
+})
+
+
+
 void update_panel(WINDOW *win, PanelProp *panel) {
     FileNode *current = panel->files;
     int line = 1;  // Start from the second row to avoid the border
@@ -462,7 +485,8 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 
         mvwhline(win, line, 1, ' ', name_width + 1);
         mvwprintw(win, line, 1, "%c", prefix);
-        mvwaddnstr(win, line, 2, current->name, name_width);
+
+        mvwaddnstr(win, line, 2, SHORTEN(current->name, name_width), name_width);
 
         mvwprintw(win, line, width - 7 - 12, "%7s", size_str);
         mvwprintw(win, line, width - 12 + 1, "%12s", date_str);
@@ -474,7 +498,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 
     wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
     wattroff(win, A_BOLD);
-    mvwprintw(win, 0, 3, " %s ", panel->path);
+    mvwprintw(win, 0, 3, " %s ", SHORTEN(panel->path, name_width + 12 + 7 - 2));
 
     // reset color to default
     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
@@ -489,7 +513,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     }
 
     // print info for active file
-    mvwprintw(win, height - 2, 1, "%-*s", width - 1, info);
+    mvwprintw(win, height - 2, 1, "%-*s", width - 1, SHORTEN(info,width - 1));
 
     wrefresh(win);
     cursor_to_cmd();

@@ -48,7 +48,7 @@ typedef struct PanelProp {
     int scroll_index;
     SortOrders sort_order;
     char path[CMD_MAX];
-    char last_dir[CMD_MAX];
+    char file_under_cursor[CMD_MAX];
     int files_count;
     FileNode *files;
 } PanelProp;
@@ -358,6 +358,7 @@ void shorten(char *name, int width, char *result) {
 
 
 
+
 void update_panel(WINDOW *win, PanelProp *panel) {
     FileNode *current = panel->files;
     int line = 1;  // Start from the second row to avoid the border
@@ -525,6 +526,26 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 }
 
 
+void update_panel_cursor() {
+   if (strlen(active_panel->file_under_cursor) >0) {
+       // Search for the last selected item and set it as the active item
+       FileNode *node = active_panel->files;
+       int index = 0;
+       while (node) {
+           if (strcmp(node->name, active_panel->file_under_cursor) == 0) {
+               active_panel->selected_index = index;
+               break;
+           }
+           node = node->next;
+           index++;
+       }
+   } else {
+       active_panel->selected_index = 0;
+   }
+   active_panel->scroll_index = 0;
+}
+
+
 void init_screen() {
     initscr();
     mouseinterval(50);
@@ -603,6 +624,9 @@ int main() {
             current = current->next;
             index++;
         }
+
+        strncpy(active_panel->file_under_cursor, current->name, strlen(current->name));
+        chdir(active_panel->path);
 
         int ch = getch();
 
@@ -698,8 +722,7 @@ int main() {
                        if (strcmp(current->name, "..") == 0) {
                            // Store the last directory name before going up
                            char * last_slash = strrchr(active_panel->path, '/');
-                           strncpy(active_panel->last_dir, last_slash + 1, CMD_MAX - 1);
-                           active_panel->last_dir[CMD_MAX - 1] = '\0';  // Null-terminate just in case
+                           strncpy(active_panel->file_under_cursor, last_slash + 1, CMD_MAX - 1);
 
                            // Go back to upper dir
                            last_slash = strrchr(active_panel->path, '/');
@@ -707,31 +730,15 @@ int main() {
                            memset(last_slash + is_root, 0, strlen(last_slash));
                        } else {
                            // Dive into the selected directory
-                           if (strlen(active_panel->path)>1) strcat(active_panel->path, "/");
+                           if (strlen(active_panel->path) > 1) strcat(active_panel->path, "/");
                            strcat(active_panel->path, current->name);
+                           active_panel->file_under_cursor[0] = 0;
                        }
 
                        // Update the file list for the new directory
                        update_panel_files(active_panel);
                        sort_file_nodes(&active_panel->files, active_panel->sort_order);
-
-                       if (strcmp(current->name, "..") == 0 || strcmp(current->name, "/") == 0) {
-                           // Search for the last directory and set it as the active item
-                           FileNode *node = active_panel->files;
-                           int index = 0;
-                           while (node) {
-                               if (strcmp(node->name, active_panel->last_dir) == 0) {
-                                   active_panel->selected_index = index;
-                                   break;
-                               }
-                               node = node->next;
-                               index++;
-                           }
-                       } else {
-                           active_panel->selected_index = 0;
-                       }
-
-                       active_panel->scroll_index = 0; // TODO for going back, make it scroll so the active item is as most in the middle as possible.
+                       update_panel_cursor();
                    } else if (current->is_executable && cmd_len == 0) {
                        snprintf(cmd, CMD_MAX, "%s/%s", active_panel->path, current->name);
                        cmd_len = strlen(cmd);
@@ -748,6 +755,10 @@ int main() {
                 init_screen();
                 memset(cmd, 0, CMD_MAX);
                 cmd_len = cursor_pos = cmd_offset = prompt_length = 0;
+
+                update_panel_files(active_panel);
+                sort_file_nodes(&active_panel->files, active_panel->sort_order);
+                update_panel_cursor();
             }
         }
 
@@ -851,6 +862,7 @@ int main() {
         if (active_panel->selected_index > active_panel->files_count - 1) {
                 active_panel->selected_index = active_panel->files_count - 1;
         }
+
 
         // Handle scrolling in files
         if (active_panel->selected_index < active_panel->scroll_index) {

@@ -1,16 +1,22 @@
 #include <ncurses.h>
+#include <string.h>
+#include <unistd.h>
+#include <pwd.h>
+#include <sys/utsname.h>
+#include <stdlib.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <sys/time.h>
+#include <ctype.h>
+
 #include <stdio.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <stdlib.h>
 
-// Define a viewer_lines structure
-typedef struct viewer_lines {
-    char *line; // Pointer to the start of the line in the mapped file
-    struct viewer_lines *next; // Pointer to the next viewer_lines
-} viewer_lines;
+#include "types.h"
+#include "globals.h"
 
 // Function to build the linked list of line pointers
 viewer_lines *build_line_index(char *file_content, off_t file_size, int *num_lines) {
@@ -57,42 +63,29 @@ void display_line(WINDOW *win, viewer_lines *line, int max_x, int current_col) {
     wrefresh(win);
 }
 
-int main() {
-    char *filename = "example.txt";
+int view_file(char *filename) {
     int input;
     int max_y, max_x;
     int current_line = 0;
     int current_col = 0; // Add a variable to keep track of the current column offset
-
-    // Initialize ncurses
-    initscr();
-    refresh();
-    noecho();
-    curs_set(0); // Hide cursor
-    keypad(stdscr, TRUE);
 
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);
 
     // Create a new window for displaying the file content
     WINDOW *content_win = newwin(max_y - 2, max_x, 1, 0);
+    wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+    wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
 
     // Open and map the file
     int fd = open(filename, O_RDONLY);
     if (fd == -1) {
-        perror("Error opening file");
-        endwin();
         return 1;
     }
+
     struct stat st;
     fstat(fd, &st);
     char *file_content = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (file_content == MAP_FAILED) {
-        perror("Error mapping file");
-        close(fd);
-        endwin();
-        return 1;
-    }
 
     // Build the linked list of line pointers
     int num_lines;
@@ -107,12 +100,29 @@ int main() {
     }
 
     current = lines;
+    curs_set(0);
 
     // Handle user input for scrolling
-    while ((input = getch()) != 'q') {
+    while(1) {
+        input = getch();
         switch (input) {
             case KEY_F(10):
             case 27:
+                delwin(content_win);
+
+                // Clean up
+                munmap(file_content, st.st_size);
+                close(fd);
+                delwin(content_win);
+
+                // Free the linked list
+                while (lines != NULL) {
+                    viewer_lines *temp = lines;
+                    lines = lines->next;
+                    free(temp);
+                }
+
+                curs_set(1);
                 return 0;
             case KEY_UP:
                 if (current_line > 0) {
@@ -148,6 +158,8 @@ int main() {
                 wrefresh(content_win);
                 delwin(content_win); // Delete the old window
                 content_win = newwin(max_y - 2, max_x, 1, 0); // Create a new window with the new dimensions
+                wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+                wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
                 break;
         }
 
@@ -165,19 +177,6 @@ int main() {
             display_line(content_win, temp, max_x, current_col); // Pass current_col to display_line
             temp = temp->next;
         }
-    }
-
-    // Clean up
-    munmap(file_content, st.st_size);
-    close(fd);
-    delwin(content_win);
-    endwin();
-
-    // Free the linked list
-    while (lines != NULL) {
-        viewer_lines *temp = lines;
-        lines = lines->next;
-        free(temp);
     }
 
     return 0;

@@ -85,19 +85,6 @@ int main() {
 
         int ch = getch();
 
-        if (ch == KEY_F(10)) {
-            break;
-        }
-
-        if (ch == KEY_F(8)) {
-            char title[CMD_MAX] = {};
-            char prompt[CMD_MAX] = {};
-            sprintf(title, "Delete file or directory\n%s/%s?", active_panel->path, active_panel->file_under_cursor);
-            int doit = show_dialog(title, (char *[]) {"Yes", "No", "Maybe", NULL}, prompt);
-            redraw_ui();
-        }
-
-
         if (ch == 27) {  // Escape character
             getch();  // Discard the '[' character
 
@@ -123,14 +110,35 @@ int main() {
                         ch = KEY_END;
                         break;
                     case 13:
-                        if (current) {
-                            if (current->is_dir) {
-                                ch = '\n';
-                            }
-                        }
+                        ch = KEY_F(3);
                         break;
                     default:
                         break;
+                }
+            }
+        }
+
+        if (ch == KEY_F(10)) {
+            break;
+        }
+
+        if (ch == KEY_F(8)) {
+            char title[CMD_MAX] = {};
+            char prompt[CMD_MAX] = {};
+            sprintf(title, "Delete file or directory\n%s/%s?", active_panel->path, active_panel->file_under_cursor);
+            int doit = show_dialog(title, (char *[]) {"Yes", "No", "Maybe", NULL}, prompt);
+            redraw_ui();
+        }
+
+        if (ch == KEY_F(3)) {
+            if (current) {
+                if (current->is_dir) {
+                    ch = '\n';
+                } else {
+                    char file[CMD_MAX] = {};
+                    sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
+                    view_file(file);
+                    redraw_ui();
                 }
             }
         }

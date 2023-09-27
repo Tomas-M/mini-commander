@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -lncurses
 
 mc: *.c
-	$(CC) mc.c cmd.c dialog.c filelist.c init.c panel.c ui.c $(CFLAGS) -o mc
+	$(CC) mc.c cmd.c dialog.c filelist.c init.c panel.c ui.c viewer.c $(CFLAGS) -o mc
 
 .PHONY: clean
 

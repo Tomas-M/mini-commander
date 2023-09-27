@@ -90,9 +90,10 @@ int main() {
         }
 
         if (ch == KEY_F(8)) {
-            char prompt[CMD_MAX] = {0};
-            sprintf(prompt, "Delete file or directory\n%s/%s?", active_panel->path, active_panel->file_under_cursor);
-            int doit = show_dialog(prompt, (char *[]) {"Yes", "No", "Maybe", NULL}, NULL);
+            char title[CMD_MAX] = {};
+            char prompt[CMD_MAX] = {};
+            sprintf(title, "Delete file or directory\n%s/%s?", active_panel->path, active_panel->file_under_cursor);
+            int doit = show_dialog(title, (char *[]) {"Yes", "No", "Maybe", NULL}, prompt);
             redraw_ui();
         }
 

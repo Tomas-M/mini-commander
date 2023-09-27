@@ -61,6 +61,9 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present) {
     int start_x = (max_x - width) / 2;
 
     WINDOW *win = newwin(height, width, start_y, start_x);
+    wbkgd(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+    wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+
     wborder(win, '|', '|', '-', '-', '+','+','+','+');
     mvwhline(win, height - 3, 0, '-', width);
     mvwaddch(win, height - 3, 0, '+');
@@ -92,20 +95,26 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
     total_buttons_width += 2 * (i - 1);
 
     int cursor_pos = (width - total_buttons_width) / 2;
+    int move_cursor_pos = 0;
 
     // Adjust the y position based on whether a prompt is present
     int y_pos = prompt_present ? 4 : 3;
     i = 0;
     while (buttons[i] != NULL) {
         if (i == selected && !editing_prompt) {
-            wattron(win, A_REVERSE);
+            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+            move_cursor_pos = cursor_pos + 2;
         }
         mvwprintw(win, y_pos + lines(title), cursor_pos, "[ %s ]", buttons[i]);
-        cursor_pos += strlen(buttons[i]) + 6;
         if (i == selected && !editing_prompt) {
-            wattroff(win, A_REVERSE);
+            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
         }
+        cursor_pos += strlen(buttons[i]) + 6;
         i++;
+    }
+
+    if (move_cursor_pos > 0) {
+        wmove(win, y_pos + lines(title), move_cursor_pos);
     }
 
     wrefresh(win);
@@ -137,18 +146,15 @@ int show_dialog(char *title, char *buttons[], char *prompt) {
 
     while (1) {
         if (editing_prompt) {
-            curs_set(1);
             if (cursor_position - prompt_offset >= max_prompt_display) {
                 prompt_offset = cursor_position - max_prompt_display + 1;
             } else if (cursor_position < prompt_offset) {
                 prompt_offset = cursor_position;
             }
-            wattron(win, A_REVERSE);
+            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
             mvwprintw(win, 2 + lines(title), 2, "%-*.*s", max_prompt_display, max_prompt_display, prompt + prompt_offset);
-            wattroff(win, A_REVERSE);
+            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
             wmove(win, 2 + lines(title), 2 + cursor_position - prompt_offset);
-        } else {
-            curs_set(0);
         }
         wrefresh(win);
 

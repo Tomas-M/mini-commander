@@ -1,0 +1,9 @@
+viewer top line
+viewer bottom buttons (hide probably)
+viewer top line stats, filename, position, %
+
+panel file color based on extension, magenta, blue,
+
+very simple editor
+
+bug when F3 is pressed on a directory and cmd is not empty, it runs cmd as like if enter was pressed

@@ -1,8 +1,8 @@
 CC = gcc
 CFLAGS = -lncurses
 
-ncurses-menu: mc.c
-	$(CC) mc.c $(CFLAGS) -o mc
+mc: mc.c
+	$(CC) mc.c cmd.c dialog.c filelist.c init.c panel.c ui.c $(CFLAGS) -o mc
 
 .PHONY: clean
 

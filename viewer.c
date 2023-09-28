@@ -18,31 +18,86 @@
 #include "types.h"
 #include "globals.h"
 
-// Function to build the linked list of line pointers
-viewer_lines *build_line_index(char *file_content, off_t file_size, int *num_lines) {
-    viewer_lines *head = NULL, *tail = NULL;
+
+file_lines* read_file_lines(const char *filename, int *num_lines) {
     *num_lines = 0;
-    char *line_start = file_content;
-    for (off_t i = 0; i < file_size; i++) {
-        if (file_content[i] == '\n' || i == file_size - 1) {
-            viewer_lines *new_viewer_lines = (viewer_lines *)malloc(sizeof(viewer_lines));
-            new_viewer_lines->line = line_start;
-            new_viewer_lines->next = NULL;
-            if (tail == NULL) {
-                head = tail = new_viewer_lines;
-            } else {
-                tail->next = new_viewer_lines;
-                tail = new_viewer_lines;
-            }
-            line_start = file_content + i + 1;
+    int initial_buffer_size = 4096;
+
+    FILE *file = fopen(filename, "rb");
+    if (file == NULL) {
+        //perror("Failed to open file");
+        return NULL;
+    }
+
+    file_lines *head = NULL, *current = NULL;
+    char *buffer = (char *)malloc(initial_buffer_size);
+    size_t buffer_size = initial_buffer_size;
+    size_t bytes_read, total_bytes_read = 0;
+
+    while ((bytes_read = fread(buffer + total_bytes_read, 1, buffer_size - total_bytes_read, file)) > 0) {
+        total_bytes_read += bytes_read;
+        char *special_char_pos = memchr(buffer, '\n', total_bytes_read);
+
+        while (special_char_pos != NULL) {
+            file_lines *new_line = (file_lines *)malloc(sizeof(file_lines));
+            new_line->line_length = special_char_pos - buffer + 1;
+            new_line->line = (char *)malloc(new_line->line_length);
+            memcpy(new_line->line, buffer, new_line->line_length);
+            new_line->next = NULL;
             (*num_lines)++;
+
+            if (current == NULL) {
+                head = new_line;
+                current = head;
+            } else {
+                current->next = new_line;
+                current = new_line;
+            }
+
+            total_bytes_read -= new_line->line_length;
+            memmove(buffer, special_char_pos + 1, total_bytes_read);
+            special_char_pos = memchr(buffer, '\n', total_bytes_read);
+        }
+
+        if (total_bytes_read == buffer_size) {
+            buffer_size += initial_buffer_size;
+            char *new_buffer = realloc(buffer, buffer_size);
+            buffer = new_buffer;
         }
     }
+
+    // Process any remaining content in the buffer into a line
+    if (total_bytes_read > 0) {
+        file_lines *new_line = (file_lines *)malloc(sizeof(file_lines));
+        new_line->line_length = total_bytes_read;
+        new_line->line = (char *)malloc(new_line->line_length);
+        memcpy(new_line->line, buffer, new_line->line_length);
+        new_line->next = NULL;
+        (*num_lines)++;
+
+        if (current == NULL) {
+            head = new_line;
+        } else {
+            current->next = new_line;
+        }
+    }
+
+    free(buffer);
+    fclose(file);
     return head;
 }
 
-void display_line(WINDOW *win, viewer_lines *line, int max_x, int current_col) {
-    char *ptr = line->line;
+void free_file_lines(file_lines *head) {
+    while (head != NULL) {
+        file_lines *temp = head;
+        head = head->next;
+        free(temp->line);
+        free(temp);
+    }
+}
+
+void display_line(WINDOW *win, file_lines *lines, int max_x, int current_col) {
+    char *ptr = lines->line;
     int offset = 0;
     while (*ptr != '\n' && offset < current_col) {
         ptr++;
@@ -82,22 +137,12 @@ int view_file(char *filename) {
     wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
     wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
 
-    // Open and map the file
-    int fd = open(filename, O_RDONLY);
-    if (fd == -1) {
-        return 1;
-    }
-
-    struct stat st;
-    fstat(fd, &st);
-    char *file_content = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-
     // Build the linked list of line pointers
     int num_lines;
-    viewer_lines *lines = build_line_index(file_content, st.st_size, &num_lines);
+    file_lines *lines = read_file_lines(filename, &num_lines);
 
     // Initial display
-    viewer_lines *current = lines;
+    file_lines *current = lines;
     for (int i = 0; i < max_y - 2 && current != NULL; i++) {
         wmove(content_win, i, 0);
         display_line(content_win, current, max_x, current_col); // Pass current_col to display_line
@@ -115,8 +160,8 @@ int view_file(char *filename) {
 
         // Initial top row stats
         mvwprintw(toprow_win, 0, 0, "%s", filename);
-        int num_width = snprintf(NULL, 0, "   %d%%", 100 * shown_line_max / num_lines);
-        mvwprintw(toprow_win, 0, max_x - num_width, "   %d%%", 100 * shown_line_max / num_lines);
+        int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, 100 * shown_line_max / num_lines);
+        mvwprintw(toprow_win, 0, max_x - num_width, "   %d/%d   %d%%", shown_line_max, num_lines, 100 * shown_line_max / num_lines);
         wrefresh(toprow_win);
 
         input = noesc(getch());
@@ -125,19 +170,7 @@ int view_file(char *filename) {
             case KEY_F(3):
             case 27:
                 delwin(content_win);
-
-                // Clean up
-                munmap(file_content, st.st_size);
-                close(fd);
-                delwin(content_win);
-
-                // Free the linked list
-                while (lines != NULL) {
-                    viewer_lines *temp = lines;
-                    lines = lines->next;
-                    free(temp);
-                }
-
+                free_file_lines(lines);
                 curs_set(1);
                 return 0;
             case KEY_UP:
@@ -193,7 +226,7 @@ int view_file(char *filename) {
         }
 
         // Redisplay the window content
-        viewer_lines *temp = current;
+        file_lines *temp = current;
         for (int i = 0; i < max_y - 2 && temp != NULL; i++) {
             wmove(content_win, i, 0);
             wclrtoeol(content_win);

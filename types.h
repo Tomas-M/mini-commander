@@ -43,10 +43,11 @@ typedef struct PanelProp {
     FileNode *files;
 } PanelProp;
 
-typedef struct viewer_lines {
-    char *line; // Pointer to the start of the line in the mapped file
-    struct viewer_lines *next; // Pointer to the next viewer_lines
-} viewer_lines;
+typedef struct file_lines {
+    char *line;
+    int line_length;
+    struct file_lines *next;
+} file_lines;
 
 enum {
     COLOR_WHITE_ON_BLACK = 1,

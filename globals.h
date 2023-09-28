@@ -19,8 +19,7 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
 int show_dialog(char *title, char *buttons[], char *prompt);
 void cursor_to_cmd();
 void update_cmd();
-viewer_lines *build_line_index(char *file_content, off_t file_size, int *num_lines);
-void display_line(WINDOW *win, viewer_lines *line, int max_x, int current_col);
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col);
 int view_file(char *filename);
 int file_has_extension(const char *filename, const char *extensions[]);
 void dive_into_directory(FileNode *current);

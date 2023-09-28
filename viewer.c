@@ -151,12 +151,12 @@ int view_file(char *filename) {
                 }
                 break;
             case KEY_LEFT:
-                if (current_col > 0) {
-                    current_col--;
+                if (current_col >= 10) {
+                    current_col-=10;
                 }
                 break;
             case KEY_RIGHT:
-                current_col++;
+                current_col+=10;
                 break;
             case KEY_PPAGE: // PgUp
                 current_line -= max_y - 2;
@@ -167,6 +167,13 @@ int view_file(char *filename) {
                 if (current_line > num_lines - (max_y - 2)) {
                     current_line = num_lines - (max_y - 2);
                 }
+                break;
+            case KEY_HOME: // Handle Home key
+                current_line = 0;
+                break;
+            case KEY_END: // Handle End key
+                current_line = num_lines - (max_y - 2);
+                if (current_line < 0) current_line = 0;
                 break;
             case KEY_RESIZE: // Handle screen resize
                 getmaxyx(stdscr, max_y, max_x); // Update max_y and max_x

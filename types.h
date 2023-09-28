@@ -27,6 +27,7 @@ typedef struct FileNode {
     int is_link;
     int is_link_to_dir;  // link points to a directory
     int is_link_broken; // invalid link
+    int is_device;
     char* link_target;
     int is_selected; // with Insert key
     struct FileNode *next;

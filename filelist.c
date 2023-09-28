@@ -115,6 +115,7 @@ int update_panel_files(PanelProp *panel) {
         new_node->is_link = S_ISLNK(file_stat.st_mode);
         new_node->is_link_broken = 0;
         new_node->is_link_to_dir = 0;
+        new_node->is_device = S_ISBLK(file_stat.st_mode) || S_ISCHR(file_stat.st_mode);
 
         if (new_node->is_link) {
             new_node->link_target = NULL;

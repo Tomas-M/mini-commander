@@ -91,7 +91,6 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 
            if (file_has_extension(current->name, (const char*[]){".c",".php",".sh",".h",NULL})) {
               wattron(win, COLOR_PAIR(COLOR_CYAN_ON_BLUE));
-              wattron(win, A_BOLD);
            }
         }
 
@@ -108,6 +107,10 @@ void update_panel(WINDOW *win, PanelProp *panel) {
             wattron(win, A_BOLD);
         } else if (current->is_link) {
             prefix = '@';
+        } else if (current->is_device) {
+            prefix = '-';
+            wattron(win, COLOR_PAIR(COLOR_MAGENTA_ON_BLUE));
+            wattron(win, A_BOLD);
         } else if (current->is_executable) {
             prefix = '*';
             wattron(win, COLOR_PAIR(COLOR_GREEN_ON_BLUE));

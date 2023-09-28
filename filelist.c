@@ -160,4 +160,26 @@ void free_file_nodes(FileNode *head) {
     }
 }
 
+void dive_into_directory(FileNode *current) {
+   if (strcmp(current->name, "..") == 0) {
+       // Store the last directory name before going up
+       char * last_slash = strrchr(active_panel->path, '/');
+       strncpy(active_panel->file_under_cursor, last_slash + 1, CMD_MAX - 1);
+
+       // Go back to upper dir
+       last_slash = strrchr(active_panel->path, '/');
+       int is_root = (last_slash == active_panel->path);
+       memset(last_slash + is_root, 0, strlen(last_slash));
+   } else {
+       // Dive into the selected directory
+       if (strlen(active_panel->path) > 1) strcat(active_panel->path, "/");
+       strcat(active_panel->path, current->name);
+       active_panel->file_under_cursor[0] = 0;
+   }
+
+   // Update the file list for the new directory
+   update_panel_files(active_panel);
+   sort_file_nodes(&active_panel->files, active_panel->sort_order);
+   update_panel_cursor();
+}
 

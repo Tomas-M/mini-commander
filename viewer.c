@@ -119,7 +119,7 @@ int view_file(char *filename) {
         mvwprintw(toprow_win, 0, max_x - num_width, "   %d%%", 100 * shown_line_max / num_lines);
         wrefresh(toprow_win);
 
-        input = getch();
+        input = noesc(getch());
         switch (input) {
             case KEY_F(10):
             case KEY_F(3):

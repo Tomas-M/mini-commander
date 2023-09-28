@@ -37,6 +37,44 @@ int prompt_length = 0;
 char cmd[CMD_MAX] = {0};
 int cmd_len = 0;
 
+int noesc(int ch) {
+    if (ch == 27) {  // Escape character
+        getch();  // Discard the '[' character
+
+        int num = 0;
+        ch = getch();
+        while (ch == '[') {
+            ch = getch();
+        }
+
+        while (ch >= '0' && ch <= '9') {  // Read numbers
+            num = num * 10 + (ch - '0');
+            ch = getch();
+        }
+
+        if (ch == '~') {
+            switch (num) {
+                case 1:
+                    ch = KEY_HOME;
+                    break;
+                case 2:
+                    ch = KEY_IC;
+                    break;
+                case 4:
+                    ch = KEY_END;
+                    break;
+                case 13:
+                    ch = KEY_F(3);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    return ch;
+}
+
 
 int main() {
 
@@ -83,40 +121,7 @@ int main() {
         strncpy(active_panel->file_under_cursor, current->name, strlen(current->name));
         chdir(active_panel->path);
 
-        int ch = getch();
-
-        if (ch == 27) {  // Escape character
-            getch();  // Discard the '[' character
-
-            int num = 0;
-            ch = getch();
-            while (ch == '[') {
-                ch = getch();
-            }
-            while (ch >= '0' && ch <= '9') {  // Read numbers
-                num = num * 10 + (ch - '0');
-                ch = getch();
-            }
-
-            if (ch == '~') {
-                switch (num) {
-                    case 1:
-                        ch = KEY_HOME;
-                        break;
-                    case 2:
-                        ch = KEY_IC;
-                        break;
-                    case 4:
-                        ch = KEY_END;
-                        break;
-                    case 13:
-                        ch = KEY_F(3);
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
+        int ch = noesc(getch());
 
         if (ch == KEY_F(10)) {
             break;
@@ -133,7 +138,7 @@ int main() {
         if (ch == KEY_F(3)) {
             if (current) {
                 if (current->is_dir) {
-                    ch = '\n';
+                    dive_into_directory(current);
                 } else {
                     char file[CMD_MAX] = {};
                     sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
@@ -190,26 +195,7 @@ int main() {
             if (cmd_len == 0) {
                 if (current) {
                    if (current->is_dir) {
-                       if (strcmp(current->name, "..") == 0) {
-                           // Store the last directory name before going up
-                           char * last_slash = strrchr(active_panel->path, '/');
-                           strncpy(active_panel->file_under_cursor, last_slash + 1, CMD_MAX - 1);
-
-                           // Go back to upper dir
-                           last_slash = strrchr(active_panel->path, '/');
-                           int is_root = (last_slash == active_panel->path);
-                           memset(last_slash + is_root, 0, strlen(last_slash));
-                       } else {
-                           // Dive into the selected directory
-                           if (strlen(active_panel->path) > 1) strcat(active_panel->path, "/");
-                           strcat(active_panel->path, current->name);
-                           active_panel->file_under_cursor[0] = 0;
-                       }
-
-                       // Update the file list for the new directory
-                       update_panel_files(active_panel);
-                       sort_file_nodes(&active_panel->files, active_panel->sort_order);
-                       update_panel_cursor();
+                       dive_into_directory(current);
                    } else if (current->is_executable && cmd_len == 0) {
                        snprintf(cmd, CMD_MAX, "%s/%s", active_panel->path, current->name);
                        cmd_len = strlen(cmd);

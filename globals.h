@@ -23,7 +23,8 @@ viewer_lines *build_line_index(char *file_content, off_t file_size, int *num_lin
 void display_line(WINDOW *win, viewer_lines *line, int max_x, int current_col);
 int view_file(char *filename);
 int file_has_extension(const char *filename, const char *extensions[]);
-
+void dive_into_directory(FileNode *current);
+int noesc(int ch);
 
 // Macro to use shorten inline
 #define SHORTEN(name, width) ({ \

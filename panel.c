@@ -27,6 +27,16 @@ void shorten(char *name, int width, char *result) {
     }
 }
 
+int file_has_extension(const char *filename, const char *extensions[]) {
+    for (int i = 0; extensions[i]; i++) {
+        if (strcmp(filename + strlen(filename) - strlen(extensions[i]), extensions[i]) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+
 void update_panel(WINDOW *win, PanelProp *panel) {
     FileNode *current = panel->files;
     int line = 1;  // Start from the second row to avoid the border
@@ -70,6 +80,21 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         // reset default color
         wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
         wattroff(win, A_BOLD);
+
+        // use some colors for regular files based by extension
+        if (!current->is_dir)
+        {
+           if (file_has_extension(current->name, (const char*[]){".gz",".tar",".xz",NULL})) {
+              wattron(win, COLOR_PAIR(COLOR_MAGENTA_ON_BLUE));
+              wattron(win, A_BOLD);
+           }
+
+           if (file_has_extension(current->name, (const char*[]){".c",".php",".sh",".h",NULL})) {
+              wattron(win, COLOR_PAIR(COLOR_CYAN_ON_BLUE));
+              wattron(win, A_BOLD);
+           }
+        }
+
 
         if (current->is_link_broken) {
             prefix = '!';

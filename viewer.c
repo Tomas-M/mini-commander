@@ -72,6 +72,11 @@ int view_file(char *filename) {
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);
 
+    // Top line on screen
+    WINDOW *toprow_win = newwin(1, max_x, 0, 0);
+    wbkgd(toprow_win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+    wattron(toprow_win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+
     // Create a new window for displaying the file content
     WINDOW *content_win = newwin(max_y - 2, max_x, 1, 0);
     wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
@@ -104,9 +109,20 @@ int view_file(char *filename) {
 
     // Handle user input for scrolling
     while(1) {
+
+        int shown_line_max = current_line + max_y - 2;
+        if (shown_line_max > num_lines) shown_line_max = num_lines;
+
+        // Initial top row stats
+        mvwprintw(toprow_win, 0, 0, "%s", filename);
+        int num_width = snprintf(NULL, 0, "   %d%%", 100 * shown_line_max / num_lines);
+        mvwprintw(toprow_win, 0, max_x - num_width, "   %d%%", 100 * shown_line_max / num_lines);
+        wrefresh(toprow_win);
+
         input = getch();
         switch (input) {
             case KEY_F(10):
+            case KEY_F(3):
             case 27:
                 delwin(content_win);
 

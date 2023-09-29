@@ -19,3 +19,4 @@ test: mc
 
 clean:
 	rm -f mc
+	rm -f TAGS

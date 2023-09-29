@@ -8,6 +8,12 @@ mc: *.c *.h
 
 .PHONY: clean
 
+tags:
+	#
+	# This will create TAGS file for midnight commander
+	#
+	ctags -e --totals=yes --tag-relative=yes --PHP-kinds=+f-v --JavaScript-kinds=+f-v --c-kinds=+f+d+t+v *
+
 test: mc
 	./mc
 

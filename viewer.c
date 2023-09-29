@@ -113,10 +113,10 @@ void free_file_lines(file_lines *head) {
     }
 }
 
-void display_line(WINDOW *win, file_lines *lines, int max_x, int current_col) {
-    char *ptr = lines->line;
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col) {
+    char *ptr = line->line;
     int offset = 0;
-    while (offset < lines->line_length && offset < current_col) {
+    while (offset < line->line_length && offset < current_col) {
         ptr++;
         offset++;
     }
@@ -124,7 +124,7 @@ void display_line(WINDOW *win, file_lines *lines, int max_x, int current_col) {
         // If the line is shorter than current_col, just clear the line
         wclrtoeol(win);
     } else {
-        for (int x = 0; x < max_x && offset < lines->line_length; x++, ptr++, offset++) {
+        for (int x = 0; x < max_x && offset < line->line_length; x++, ptr++, offset++) {
             if (isprint((unsigned char)*ptr)) { // Check if the character is printable
                 waddch(win, *ptr);
             } else {

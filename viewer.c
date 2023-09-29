@@ -19,6 +19,23 @@
 #include "globals.h"
 
 
+char *find_newline(char *buffer, size_t length) {
+    char *pos_r = memchr(buffer, '\r', length);
+    char *pos_n = memchr(buffer, '\n', length);
+
+    if (pos_r && pos_n) {
+        if (pos_r + 1 == pos_n) {
+            return pos_n; // if \r\n is encountered, break on the later
+        }
+        return pos_r < pos_n ? pos_r : pos_n;
+    } else if (pos_r) {
+        return pos_r;
+    } else {
+        return pos_n;
+    }
+}
+
+
 file_lines* read_file_lines(const char *filename, int *num_lines) {
     *num_lines = 0;
     int initial_buffer_size = 4096;
@@ -36,11 +53,11 @@ file_lines* read_file_lines(const char *filename, int *num_lines) {
 
     while ((bytes_read = fread(buffer + total_bytes_read, 1, buffer_size - total_bytes_read, file)) > 0) {
         total_bytes_read += bytes_read;
-        char *special_char_pos = memchr(buffer, '\n', total_bytes_read);
+        char *newline_pos = find_newline(buffer, total_bytes_read);
 
-        while (special_char_pos != NULL) {
+        while (newline_pos != NULL) {
             file_lines *new_line = (file_lines *)malloc(sizeof(file_lines));
-            new_line->line_length = special_char_pos - buffer + 1;
+            new_line->line_length = newline_pos - buffer + 1;
             new_line->line = (char *)malloc(new_line->line_length);
             memcpy(new_line->line, buffer, new_line->line_length);
             new_line->next = NULL;
@@ -55,8 +72,8 @@ file_lines* read_file_lines(const char *filename, int *num_lines) {
             }
 
             total_bytes_read -= new_line->line_length;
-            memmove(buffer, special_char_pos + 1, total_bytes_read);
-            special_char_pos = memchr(buffer, '\n', total_bytes_read);
+            memmove(buffer, newline_pos + 1, total_bytes_read);
+            newline_pos = find_newline(buffer, total_bytes_read);
         }
 
         if (total_bytes_read == buffer_size) {
@@ -99,7 +116,7 @@ void free_file_lines(file_lines *head) {
 void display_line(WINDOW *win, file_lines *lines, int max_x, int current_col) {
     char *ptr = lines->line;
     int offset = 0;
-    while (*ptr != '\n' && offset < current_col) {
+    while (offset < lines->line_length && offset < current_col) {
         ptr++;
         offset++;
     }
@@ -107,7 +124,7 @@ void display_line(WINDOW *win, file_lines *lines, int max_x, int current_col) {
         // If the line is shorter than current_col, just clear the line
         wclrtoeol(win);
     } else {
-        for (int x = 0; x < max_x && *ptr != '\n'; x++, ptr++) {
+        for (int x = 0; x < max_x && offset < lines->line_length; x++, ptr++, offset++) {
             if (isprint((unsigned char)*ptr)) { // Check if the character is printable
                 waddch(win, *ptr);
             } else {
@@ -117,6 +134,7 @@ void display_line(WINDOW *win, file_lines *lines, int max_x, int current_col) {
     }
     wrefresh(win);
 }
+
 
 int view_file(char *filename) {
     int input;

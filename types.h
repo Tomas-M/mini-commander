@@ -39,6 +39,8 @@ typedef struct PanelProp {
     SortOrders sort_order;
     char path[CMD_MAX];
     char file_under_cursor[CMD_MAX];
+    int num_selected_files;
+    off_t bytes_selected_files;
     int files_count;
     FileNode *files;
 } PanelProp;

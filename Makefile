@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -lncurses
 
-mc: *.c
+mc: *.c *.h
 	$(CC) mc.c cmd.c dialog.c filelist.c init.c panel.c ui.c viewer.c $(CFLAGS) -o mc
 	strip --strip-unneeded mc
 	if which upx >/dev/null; then upx --lzma --best mc; fi

@@ -217,6 +217,13 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // print info for active file
     mvwprintw(win, height - 2, 1, "%-*s", width, SHORTEN(info,width));
 
+    // print selected
+    wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
+    wattron(win, A_BOLD);
+    sprintf(info," %d B in %d file%s ", panel->bytes_selected_files, panel->num_selected_files, panel->num_selected_files == 1 ? "" : "s");
+    if (panel->num_selected_files > 0) mvwprintw(win, height - 3, width - strlen(info) - 3, "%s", info);
+    wattroff(win, A_BOLD);
+
     wrefresh(win);
     cursor_to_cmd();
 }

@@ -119,16 +119,20 @@ int main() {
 
         int ch = noesc(getch());
 
-        if (ch == KEY_F(10)) {
-            break;
+        if (ch == KEY_F(3)) {
+            if (current) {
+                if (current->is_dir) {
+                    dive_into_directory(current);
+                } else {
+                    char file[CMD_MAX] = {};
+                    sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
+                    view_file(file);
+                    redraw_ui();
+                }
+            }
         }
 
-        if (ch == KEY_F(8)) {
-            char title[CMD_MAX] = {};
-            char prompt[CMD_MAX] = {};
-            sprintf(title, "Delete file or directory\n%s/%s?", active_panel->path, active_panel->file_under_cursor);
-            int doit = show_dialog(title, (char *[]) {"Yes", "No", "Maybe", NULL}, prompt);
-            redraw_ui();
+        if (ch == KEY_F(5)) { // F5
         }
 
         if (ch == KEY_F(7)) { // F7
@@ -151,18 +155,18 @@ int main() {
             redraw_ui();
         }
 
-        if (ch == KEY_F(3)) {
-            if (current) {
-                if (current->is_dir) {
-                    dive_into_directory(current);
-                } else {
-                    char file[CMD_MAX] = {};
-                    sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
-                    view_file(file);
-                    redraw_ui();
-                }
-            }
+        if (ch == KEY_F(10)) {
+            break;
         }
+
+        if (ch == KEY_F(8)) {
+            char title[CMD_MAX] = {};
+            char prompt[CMD_MAX] = {};
+            sprintf(title, "Delete file or directory\n%s/%s?", active_panel->path, active_panel->file_under_cursor);
+            int doit = show_dialog(title, (char *[]) {"Yes", "No", "Maybe", NULL}, prompt);
+            redraw_ui();
+        }
+
 
         if (ch == KEY_RESIZE) {  // Handle terminal resize
             endwin();
@@ -311,6 +315,8 @@ int main() {
             }
             if (current && strcmp(current->name, "..") != 0) {
                 current->is_selected = !current->is_selected;
+                if (!current->is_dir) active_panel->bytes_selected_files += current->is_selected ? current->size : -1 * current->size;
+                active_panel->num_selected_files += current->is_selected ? 1 : -1;
             }
             active_panel->selected_index++;
         }

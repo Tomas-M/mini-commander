@@ -1,5 +1,3 @@
 viewer bottom buttons (hide probably)
 
 very simple editor
-
-bug when F3 is pressed on a directory and cmd is not empty, it runs cmd as like if enter was pressed

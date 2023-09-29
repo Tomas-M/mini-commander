@@ -127,8 +127,10 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col) {
         for (int x = 0; x < max_x && offset < line->line_length; x++, ptr++, offset++) {
             if (isprint((unsigned char)*ptr)) { // Check if the character is printable
                 waddch(win, *ptr);
-            } else {
+            } else if (*ptr != '\r' && *ptr != '\n') {
                 waddch(win, '.'); // If not, print a "."
+            } else {
+                // do not actually print CR or LF at all
             }
         }
     }

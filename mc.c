@@ -84,11 +84,7 @@ int main() {
     left_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
     right_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
 
-    update_panel_files(&left_panel);
-    update_panel_files(&right_panel);
-
-    sort_file_nodes(&left_panel.files, left_panel.sort_order);
-    sort_file_nodes(&right_panel.files, right_panel.sort_order);
+    update_files_in_both_panels();
 
     init_screen();
 
@@ -132,6 +128,25 @@ int main() {
             char prompt[CMD_MAX] = {};
             sprintf(title, "Delete file or directory\n%s/%s?", active_panel->path, active_panel->file_under_cursor);
             int doit = show_dialog(title, (char *[]) {"Yes", "No", "Maybe", NULL}, prompt);
+            redraw_ui();
+        }
+
+        if (ch == KEY_F(7)) { // F7
+            char title[CMD_MAX] = {};
+            char prompt[CMD_MAX] = {};
+            sprintf(title, "Enter directory name to create:");
+            int doit = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt);
+            if (doit == 0) {
+                // Set the directory permissions to 0755
+                mode_t mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
+                int err = mkdir(prompt, mode);
+                if (!err) {
+                    strncpy(active_panel->file_under_cursor, prompt, strlen(prompt));
+                } else {
+                   // TODO handle possible error
+                }
+                update_files_in_both_panels();
+            }
             redraw_ui();
         }
 
@@ -212,10 +227,7 @@ int main() {
                 init_screen();
                 memset(cmd, 0, CMD_MAX);
                 cmd_len = cursor_pos = cmd_offset = prompt_length = 0;
-
-                update_panel_files(active_panel);
-                sort_file_nodes(&active_panel->files, active_panel->sort_order);
-                update_panel_cursor();
+                update_files_in_both_panels();
             }
         }
 
@@ -232,6 +244,10 @@ int main() {
             getch();
             init_screen();
             redraw_ui();
+        }
+
+        if (ch == 18) { // Ctrl+R
+            update_files_in_both_panels();
         }
 
         if (ch == KEY_BACKSPACE && cursor_pos > 0) {

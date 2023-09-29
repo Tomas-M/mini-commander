@@ -12,6 +12,7 @@ void redraw_ui();
 int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order);
 void sort_file_nodes(FileNode **head_ref, SortOrders sort_order);
 int update_panel_files(PanelProp *panel);
+void update_files_in_both_panels();
 void free_file_nodes(FileNode *head);
 int lines(char * title);
 WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present);

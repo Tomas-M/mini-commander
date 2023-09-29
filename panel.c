@@ -240,3 +240,12 @@ void update_panel_cursor() {
    }
    active_panel->scroll_index = 0;
 }
+
+
+void update_files_in_both_panels() {
+    update_panel_files(&left_panel);
+    update_panel_files(&right_panel);
+    sort_file_nodes(&left_panel.files, left_panel.sort_order);
+    sort_file_nodes(&right_panel.files, right_panel.sort_order);
+    update_panel_cursor();
+}

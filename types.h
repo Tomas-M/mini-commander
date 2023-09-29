@@ -51,10 +51,11 @@ typedef struct file_lines {
     struct file_lines *next;
 } file_lines;
 
-enum {
+enum Color {
     COLOR_WHITE_ON_BLACK = 1,
-    COLOR_BLACK_ON_WHITE,
     COLOR_WHITE_ON_BLUE,
+    COLOR_WHITE_ON_RED,
+    COLOR_BLACK_ON_WHITE,
     COLOR_BLACK_ON_CYAN,
     COLOR_YELLOW_ON_CYAN,
     COLOR_YELLOW_ON_BLUE,

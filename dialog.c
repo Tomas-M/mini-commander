@@ -27,7 +27,7 @@ int lines(char * title)
 
 
 // Function to create a dialog window with a title, buttons, and an optional text prompt
-WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present) {
+WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int is_danger) {
     int max_y, max_x;
     getmaxyx(stdscr, max_y, max_x);
 
@@ -52,8 +52,8 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present) {
 
     int width = total_button_width > title_width ? total_button_width : title_width;
 
-    // Ensure minimum width is half of the screen width
-    width = width < max_x / 2 ? max_x / 2 : width;
+    // Ensure minimum width is somehow useful
+    width = width < max_x / 3 ? max_x / 3 : width;
 
     // Increase the height of the window if a prompt is present
     int height = (prompt_is_present ? 6 : 5) + lines(title);
@@ -61,8 +61,15 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present) {
     int start_x = (max_x - width) / 2;
 
     WINDOW *win = newwin(height, width, start_y, start_x);
-    wbkgd(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
-    wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+
+    if (is_danger) {
+        wbkgd(win, COLOR_PAIR(COLOR_WHITE_ON_RED));
+        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_RED));
+        wattron(win, A_BOLD);
+    } else {
+        wbkgd(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+        wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+    }
 
     wborder(win, '|', '|', '-', '-', '+','+','+','+');
     mvwhline(win, height - 3, 0, '-', width);
@@ -82,7 +89,7 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present) {
     return win;
 }
 
-void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt) {
+void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt, int is_danger) {
     int width, height;
     getmaxyx(win, height, width);
 
@@ -102,12 +109,22 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
     i = 0;
     while (buttons[i] != NULL) {
         if (i == selected && !editing_prompt) {
-            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+            if (is_danger) {
+                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+                wattroff(win, A_BOLD);
+            } else {
+                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+            }
             move_cursor_pos = cursor_pos + 2;
         }
         mvwprintw(win, y_pos + lines(title), cursor_pos, "[ %s ]", buttons[i]);
         if (i == selected && !editing_prompt) {
-            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+            if (is_danger) {
+                wattron(win, COLOR_PAIR(COLOR_WHITE_ON_RED));
+                wattron(win, A_BOLD);
+            } else {
+                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+            }
         }
         cursor_pos += strlen(buttons[i]) + 6;
         i++;
@@ -120,7 +137,7 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
     wrefresh(win);
 }
 
-int show_dialog(char *title, char *buttons[], char *prompt) {
+int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
     int selected = 0;
     int prompt_is_present = prompt ? 1 : 0;
     int editing_prompt = prompt ? 1 : 0;
@@ -129,8 +146,8 @@ int show_dialog(char *title, char *buttons[], char *prompt) {
         prompt = "";
     }
 
-    WINDOW *win = create_dialog(title, buttons, prompt_is_present);
-    update_dialog_buttons(win, title, buttons, selected, prompt_is_present, editing_prompt);
+    WINDOW *win = create_dialog(title, buttons, prompt_is_present, is_danger);
+    update_dialog_buttons(win, title, buttons, selected, prompt_is_present, editing_prompt, is_danger);
 
     int buttons_count = 0;
     while (buttons[buttons_count] != NULL) {
@@ -259,6 +276,6 @@ int show_dialog(char *title, char *buttons[], char *prompt) {
                 }
                 break;
         }
-        update_dialog_buttons(win, title, buttons, selected, prompt_is_present, editing_prompt);
+        update_dialog_buttons(win, title, buttons, selected, prompt_is_present, editing_prompt, is_danger);
     }
 }

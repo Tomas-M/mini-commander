@@ -134,6 +134,7 @@ int main() {
         if (ch == KEY_F(7)) { // F7
             char title[CMD_MAX] = {};
             char prompt[CMD_MAX] = {};
+            sprintf(prompt, active_panel->file_under_cursor);
             sprintf(title, "Enter directory name to create:");
             int doit = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt);
             if (doit == 0) {
@@ -141,7 +142,7 @@ int main() {
                 mode_t mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
                 int err = mkdir(prompt, mode);
                 if (!err) {
-                    strncpy(active_panel->file_under_cursor, prompt, strlen(prompt));
+                    sprintf(active_panel->file_under_cursor, prompt);
                 } else {
                    // TODO handle possible error
                 }

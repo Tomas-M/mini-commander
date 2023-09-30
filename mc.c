@@ -137,7 +137,8 @@ int main() {
             char prompt[CMD_MAX] = {};
             sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int doit = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            // deselect all
             redraw_ui();
         }
 
@@ -146,8 +147,8 @@ int main() {
             char prompt[CMD_MAX] = {};
             sprintf(prompt, active_panel->file_under_cursor);
             sprintf(title, "Enter directory name to create:");
-            int doit = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
-            if (doit == 0) {
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            if (btn == 1) {
                 // Set the directory permissions to 0755
                 mode_t mode = S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH;
                 int err = mkdir(prompt, mode);
@@ -163,8 +164,14 @@ int main() {
 
         if (ch == KEY_F(8)) {
             char title[CMD_MAX] = {};
-            sprintf(title, "Delete file or directory\n%s/%s?", active_panel->path, active_panel->file_under_cursor);
-            int doit = show_dialog(title, (char *[]) {"Yes", "No", NULL}, NULL, 1);
+            sprintf(title, "Delete %d file%s/director%s?", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
+            int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, NULL, 1);
+            if (btn == 1) {
+                if (active_panel->num_selected_files == 0) {
+                    // select current file under cursor
+                }
+            }
+            // deselect all
             redraw_ui();
         }
 

@@ -26,6 +26,58 @@ int lines(char * title)
 }
 
 
+WINDOW *get_window_at(int y, int x) {
+    WINDOW *wins[] = {win2, win1};
+    for (int i = 0; i < 2; i++) {
+        int win_y, win_x, height, width;
+        getbegyx(wins[i], win_y, win_x);
+        getmaxyx(wins[i], height, width);
+        if (y >= win_y && y < win_y + height && x >= win_x && x < win_x + width) {
+            return wins[i];
+        }
+    }
+    return NULL;
+}
+
+
+void show_shadow(WINDOW *win) {
+    int start_y, start_x, height, width;
+
+    int cur_y, cur_x;
+    getyx(win, cur_y, cur_x);
+
+    // Get the position and size of the window
+    getbegyx(win, start_y, start_x);
+    getmaxyx(win, height, width);
+
+    // get shift for second panel win2
+    int w2shift_x, w2shift_y = 0;
+    getbegyx(win2, w2shift_y, w2shift_x);
+
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < 2; j++) {
+            int x = start_x + width + j;
+            int y = start_y + i + 1;
+            WINDOW *w = get_window_at(y, x);
+            chtype ch = mvwinch(w, y - (w == win2 ? w2shift_y : 0), x - (w == win2 ? w2shift_x : 0));
+            mvaddch(y, x, (ch & A_CHARTEXT));
+        }
+    }
+
+    for (int i = 2; i < width + 2; i++) {
+        int x = start_x + i;
+        int y = start_y + height;
+        WINDOW *w = get_window_at(y, x);
+        chtype ch = mvwinch(w, y - (w == win2 ? w2shift_y : 0), x - (w == win2 ? w2shift_x : 0));
+        mvaddch(y, x, (ch & A_CHARTEXT));
+    }
+
+    wmove(win, cur_y, cur_x);
+    refresh();
+}
+
+
+
 // Function to create a dialog window with a title, buttons, and an optional text prompt
 WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int is_danger) {
     int max_y, max_x;
@@ -53,12 +105,27 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
     int width = total_button_width > title_width ? total_button_width : title_width;
 
     // Ensure minimum width is somehow useful
-    width = width < max_x / 3 ? max_x / 3 : width;
+    if (!is_danger) {
+        width = width < max_x / 3 ? max_x / 3 : width;
+    }
 
     // Increase the height of the window if a prompt is present
     int height = (prompt_is_present ? 6 : 5) + lines(title);
-    int start_y = (max_y - height) / 2;
+    int start_y = (max_y - height) / 2 - (is_danger ? 8 : 0);
     int start_x = (max_x - width) / 2;
+
+    WINDOW *background = newwin(height + 2, width + 2, start_y - 1, start_x - 1);
+
+    if (is_danger) {
+        wbkgd(background, COLOR_PAIR(COLOR_WHITE_ON_RED));
+        wattron(background, COLOR_PAIR(COLOR_WHITE_ON_RED));
+        wattron(background, A_BOLD);
+    } else {
+        wbkgd(background, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+        wattron(background, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+    }
+    wrefresh(background);
+    show_shadow(background);
 
     WINDOW *win = newwin(height, width, start_y, start_x);
 
@@ -260,7 +327,7 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
                     selected = 0;
                 }
                 delwin(win);
-                return selected;
+                return selected + 1;
                 break;
             default:
                 if (editing_prompt && isprint(ch) && strlen(prompt) < CMD_MAX) {

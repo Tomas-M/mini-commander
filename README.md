@@ -1,5 +1,7 @@
 # mini-commander
-Mini Commander is very simplified clone of Midnight Commander for Linux
+Mini Commander is very simplified clone of Midnight Commander for Linux.
+
+I would like to all myself an author, but it ain't so easy.
 
 The majority of the code, including this text itself, was written by
 ChatGPT. The chatbot is not very smart and often makes weird mistakes. It
@@ -19,5 +21,5 @@ code it provides in responses is intended for educational and informational
 purposes, and users are free to use it as they see fit. So, the license
 of Mini Commander is GNU GPL v3.
 
-
-
+Tomas M
+slax.org

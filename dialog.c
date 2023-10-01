@@ -77,7 +77,6 @@ void show_shadow(WINDOW *win) {
 }
 
 
-
 // Function to create a dialog window with a title, buttons, and an optional text prompt
 WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int is_danger) {
     int max_y, max_x;
@@ -91,42 +90,28 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
     }
     total_button_width += 2 * (total_buttons - 1);
 
-    // Calculate the width of the longest line in the title
     int title_width = 0;
     char *title_copy = strdup(title);
     char *line = strtok(title_copy, "\n");
     while (line) {
-        int line_length = strlen(line) + 4; // adding 4 for padding
+        int line_length = strlen(line) + 4;
         title_width = line_length > title_width ? line_length : title_width;
         line = strtok(NULL, "\n");
     }
     free(title_copy);
 
     int width = total_button_width > title_width ? total_button_width : title_width;
-
-    // Ensure minimum width is somehow useful
     if (!is_danger) {
         width = width < max_x / 3 ? max_x / 3 : width;
     }
 
-    // Increase the height of the window if a prompt is present
-    int height = (prompt_is_present ? 6 : 5) + lines(title);
+    width = width + 2;
+
+    int height = (prompt_is_present ? 6 : 5) + lines(title) + 2;
     int start_y = (max_y - height) / 2 - (is_danger ? 8 : 0);
     int start_x = (max_x - width) / 2;
 
-    WINDOW *background = newwin(height + 2, width + 2, start_y - 1, start_x - 1);
-
-    if (is_danger) {
-        wbkgd(background, COLOR_PAIR(COLOR_WHITE_ON_RED));
-        wattron(background, COLOR_PAIR(COLOR_WHITE_ON_RED));
-        wattron(background, A_BOLD);
-    } else {
-        wbkgd(background, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
-        wattron(background, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
-    }
-    wrefresh(background);
-    show_shadow(background);
-
+    // Increase the size of the window by 2 in both dimensions
     WINDOW *win = newwin(height, width, start_y, start_x);
 
     if (is_danger) {
@@ -138,16 +123,25 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
         wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
     }
 
-    wborder(win, '|', '|', '-', '-', '+','+','+','+');
-    mvwhline(win, height - 3, 0, '-', width);
-    mvwaddch(win, height - 3, 0, '+');
-    mvwaddch(win, height - 3, width - 1, '+');
+    show_shadow(win);
 
-    int title_line = 1;
+    mvwaddch(win, 1, 1, '+'); // Top left corner
+    mvwaddch(win, 1, width - 2, '+'); // Top right corner
+    mvwaddch(win, height - 2, 1, '+'); // Bottom left corner
+    mvwaddch(win, height - 2, width - 2, '+'); // Bottom right corner
+    mvwhline(win, 1, 2, '-', width - 4); // Top border
+    mvwhline(win, height - 2, 2, '-', width - 4); // Bottom border
+    mvwvline(win, 2, 1, '|', height - 4); // Left border
+    mvwvline(win, 2, width - 2, '|', height - 4); // Right border
+    mvwhline(win, height - 4, 2, '-', width - 4); // Horizontal line above buttons
+    mvwaddch(win, height - 4, 1, '+'); // Left intersection
+    mvwaddch(win, height - 4, width - 2, '+'); // Right intersection
+
+    int title_line = 2;
     title_copy = strdup(title);
     line = strtok(title_copy, "\n");
     while (line) {
-        mvwprintw(win, title_line, 2, "%s", line);
+        mvwprintw(win, title_line, 3, "%s", line);
         line = strtok(NULL, "\n");
         title_line++;
     }
@@ -155,6 +149,7 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
 
     return win;
 }
+
 
 void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt, int is_danger) {
     int width, height;
@@ -172,7 +167,7 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
     int move_cursor_pos = 0;
 
     // Adjust the y position based on whether a prompt is present
-    int y_pos = prompt_present ? 4 : 3;
+    int y_pos = prompt_present ? 5 : 4;
     i = 0;
     while (buttons[i] != NULL) {
         if (i == selected && !editing_prompt) {
@@ -226,7 +221,7 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
     int prompt_offset = 0;
     int width, height;
     getmaxyx(win, height, width);
-    int max_prompt_display = width - 4;
+    int max_prompt_display = width - 6;
     int prompt_modified = 0;
 
     while (1) {
@@ -238,10 +233,10 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
             }
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
             if (!prompt_modified) wattron(win, A_BOLD);
-            mvwprintw(win, 2 + lines(title), 2, "%-*.*s", max_prompt_display, max_prompt_display, prompt + prompt_offset);
+            mvwprintw(win, 3 + lines(title), 3, "%-*.*s", max_prompt_display, max_prompt_display, prompt + prompt_offset);
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
             if (!prompt_modified) wattroff(win, A_BOLD);
-            wmove(win, 2 + lines(title), 2 + cursor_position - prompt_offset);
+            wmove(win, 3 + lines(title), 3 + cursor_position - prompt_offset);
         }
         wrefresh(win);
 

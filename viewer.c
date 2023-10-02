@@ -154,7 +154,10 @@ int view_file(char *filename) {
 
     // Create a new window for displaying the file content
     WINDOW *content_win = newwin(max_y - 2, max_x, 1, 0);
-    wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+
+    werase(content_win); // Clear the window
+    wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE)); // Set the background color
+    wrefresh(content_win); // Refresh the window to apply the changes
     wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
 
     // Build the linked list of line pointers
@@ -180,8 +183,8 @@ int view_file(char *filename) {
 
         // Initial top row stats
         mvwprintw(toprow_win, 0, 0, "%s", filename);
-        int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, 100 * shown_line_max / num_lines);
-        mvwprintw(toprow_win, 0, max_x - num_width, "   %d/%d   %d%%", shown_line_max, num_lines, 100 * shown_line_max / num_lines);
+        int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
+        mvwprintw(toprow_win, 0, max_x - num_width, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
         wrefresh(toprow_win);
 
         input = noesc(getch());

@@ -14,8 +14,23 @@
 #include "types.h"
 #include "globals.h"
 
+
+void initialize_ncurses() {
+    const char *terms[] = {NULL, "xterm", "xfce", "vt100"};
+    SCREEN *screen = NULL;
+    for (int i = 0; i < 4 && screen == NULL; ++i) {
+        screen = newterm(terms[i], stdout, stdin);
+    }
+
+    if (screen == NULL) {
+        // last attempt
+        initscr();
+    }
+}
+
+
 void init_screen() {
-    initscr();
+    initialize_ncurses();
     refresh();
     mouseinterval(50);
     start_color();

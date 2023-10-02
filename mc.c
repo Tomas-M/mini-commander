@@ -256,7 +256,7 @@ int main() {
 
         if (ch == 15) {  // Ctrl+O
             endwin();
-            initscr();
+            initialize_ncurses();
             raw();
             getch();
             init_screen();

@@ -42,7 +42,6 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     int line = 1;  // Start from the second row to avoid the border
     int width = getmaxx(win) - 2;
     int height = getmaxy(win);
-    int visible_items = height - 4;
     int name_width = width - 12 - 7 - 3;
     char info[CMD_MAX];
 
@@ -71,7 +70,6 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         current = current->next;
     }
 
-    FileNode * active_item = NULL;
     int index = panel->scroll_index;
     while (current != NULL && line < height - 3) {
         int is_active_item = (index == panel->selected_index);
@@ -220,7 +218,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // print selected
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
     wattron(win, A_BOLD);
-    sprintf(info," %d B in %d file%s ", panel->bytes_selected_files, panel->num_selected_files, panel->num_selected_files == 1 ? "" : "s");
+    sprintf(info," %ld B in %d file%s ", panel->bytes_selected_files, panel->num_selected_files, panel->num_selected_files == 1 ? "" : "s");
     if (panel->num_selected_files > 0) mvwprintw(win, height - 3, width - strlen(info) - 3, "%s", info);
     wattroff(win, A_BOLD);
 

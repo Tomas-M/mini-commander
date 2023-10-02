@@ -167,11 +167,8 @@ int main() {
             sprintf(title, "Delete %d file%s/director%s?", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, NULL, 1);
             if (btn == 1) {
-                if (active_panel->num_selected_files == 0) {
-                    // select current file under cursor
-                }
+                panel_action(delete_operation);
             }
-            // deselect all
             redraw_ui();
         }
 

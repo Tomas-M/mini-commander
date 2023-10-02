@@ -65,6 +65,15 @@ enum Color {
     COLOR_RED_ON_BLUE
 };
 
+typedef struct operationContext {
+    unsigned long long total_size;
+    unsigned int total_items;
+    unsigned int overwrite_enabled;
+} operationContext;
+
+typedef int (*OperationFunc)(const char *, const char *, operationContext *);
+
+
 extern PanelProp left_panel;
 extern PanelProp right_panel;
 extern PanelProp* active_panel;

@@ -15,9 +15,13 @@
 #include "globals.h"
 
 
+SCREEN *screen = NULL;
+
 void initialize_ncurses() {
-    const char *terms[] = {NULL, "xterm", "xfce", "vt100"};
-    SCREEN *screen = NULL;
+    if (screen) return;
+
+    const char *terms[] = {NULL, "xterm", "xfce", "linux"};
+    screen = NULL;
     for (int i = 0; i < 4 && screen == NULL; ++i) {
         screen = newterm(terms[i], stdout, stdin);
     }

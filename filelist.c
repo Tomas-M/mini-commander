@@ -82,8 +82,9 @@ int update_panel_files(PanelProp *panel) {
     struct dirent *entry;
     struct stat file_stat;
     struct stat link_stat;
-    FileNode *head = NULL, *current = NULL;
+    FileNode *head = NULL, *current = NULL, *original_head = NULL;
 
+    original_head = panel->files;
     panel->files = NULL;
     panel->files_count = 0;
 
@@ -111,7 +112,6 @@ int update_panel_files(PanelProp *panel) {
         new_node->chown = file_stat.st_uid;
         new_node->is_dir = S_ISDIR(file_stat.st_mode);
         new_node->is_executable = (file_stat.st_mode & S_IXUSR) || (file_stat.st_mode & S_IXGRP) || (file_stat.st_mode & S_IXOTH);
-        new_node->is_selected = false;
         new_node->is_link = S_ISLNK(file_stat.st_mode);
         new_node->is_link_broken = 0;
         new_node->is_link_to_dir = 0;
@@ -135,6 +135,18 @@ int update_panel_files(PanelProp *panel) {
 
         if (new_node->is_link_to_dir) new_node->is_dir = 1;
 
+        // Check if this file was selected in the original list
+        FileNode *old_node = original_head;
+        while (old_node != NULL) {
+            if (old_node->is_selected && strcmp(new_node->name, old_node->name) == 0) {
+                new_node->is_selected = true;
+                active_panel->num_selected_files++;
+                active_panel->bytes_selected_files+=new_node->size;
+                break;
+            }
+            old_node = old_node->next;
+        }
+
         if (head == NULL) {
             head = new_node;
             current = head;
@@ -146,6 +158,9 @@ int update_panel_files(PanelProp *panel) {
 
     closedir(dir);
     panel->files = head;
+
+    free_file_nodes(original_head);
+
     return panel->files_count;
 }
 
@@ -174,8 +189,14 @@ void dive_into_directory(FileNode *current) {
        // Dive into the selected directory
        if (strlen(active_panel->path) > 1) strcat(active_panel->path, "/");
        strcat(active_panel->path, current->name);
-       active_panel->file_under_cursor[0] = 0;
+       active_panel->file_under_cursor[0] = '\0';
    }
+
+   free_file_nodes(active_panel->files);
+   active_panel->files = NULL;
+   active_panel->num_selected_files = 0;
+   active_panel->bytes_selected_files = 0;
+   active_panel->files_count = 0;
 
    // Update the file list for the new directory
    update_panel_files(active_panel);

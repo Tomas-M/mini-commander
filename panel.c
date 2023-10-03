@@ -71,6 +71,10 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     struct tm *current_tm = localtime(&now);
     int current_year = current_tm->tm_year;
 
+    // reset color to default
+    wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+    wattroff(win, A_BOLD);
+
     // Fill separator columns
     mvwvline(win, 1, width - 12, '|', height -3);
     mvwvline(win, 1, width - 7 - 12 - 1, '|', height -3);

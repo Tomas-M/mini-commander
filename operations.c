@@ -112,7 +112,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
     if (S_ISDIR(statbuf.st_mode)) {
        ret = rmdir(src);
        if (ret == 0) return OPERATION_OK;
-       if (ret == ENOTEMPTY || ret == EEXIST) return OPERATION_RETRY_AFTER_CHILDS;
+       if (errno == ENOTEMPTY || errno == EEXIST) return OPERATION_RETRY_AFTER_CHILDS;
     } else {
        return unlink(src);
     }
@@ -172,27 +172,10 @@ int mkdir_recursive(const char *path, mode_t mode) {
             *p = '/';
         }
     }
-    return mkdir(tmp, mode);
+
+    return mkdir(tmp, mode) ? errno : 0;
 }
 
-
-
-int is_directory_empty(const char *dirname) {
-    int n = 0;
-    struct dirent *d;
-    DIR *dir = opendir(dirname);
-    if (dir == NULL) //Not a directory or doesn't exist
-        return 1;
-    while ((d = readdir(dir)) != NULL) {
-        if(++n > 2)
-            break;
-    }
-    closedir(dir);
-    if (n <= 2) //Directory Empty
-        return 1;
-    else
-        return 0;
-}
 
 
 int copy_file_or_directory(const char *src, const char *dest) {

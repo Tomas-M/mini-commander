@@ -160,14 +160,17 @@ int mkdir_recursive(const char *path, mode_t mode) {
         if (S_ISDIR(st.st_mode)) {
             return 0; // Directory already exists
         } else {
-            return ENOTDIR; // Path exists but is not a directory
+            return EEXIST; // Path exists but is not a directory
         }
     } else if (errno != ENOENT) {
         // If the error is not "no such file or directory", return with an error
         return errno;
     }
 
-    // If the directory does not exist, start the recursive creation
+    // try mkdir directly, if OK return
+    if (mkdir(path, mode) == 0) return 0;
+
+    // If the directory does not exist and could not be created so far, start the recursive creation
     char tmp[256];
     char *p = NULL;
     size_t len;

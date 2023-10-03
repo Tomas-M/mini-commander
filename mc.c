@@ -166,6 +166,11 @@ int main() {
         }
 
         if (ch == KEY_F(8)) {
+            if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor,"..") == 0) {
+                show_dialog("Cannot operate on ..", (char *[]) {"OK", NULL}, NULL, 1);
+                redraw_ui();
+                continue;
+            }
             char title[CMD_MAX] = {};
             sprintf(title, "Delete %d file%s/director%s?", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, NULL, 1);

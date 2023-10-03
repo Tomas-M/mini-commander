@@ -69,12 +69,16 @@ typedef struct operationContext {
     unsigned long long total_size;
     unsigned int total_items;
     unsigned int overwrite_enabled;
+    unsigned int confirm_all;
+    unsigned int confirm_none;
+    unsigned int abort;
 } operationContext;
 
 enum operationResult {
-    OPERATION_OK,
+    OPERATION_OK = 0,
     OPERATION_PARENT_OK,
-    OPERATION_RETRY_AFTER_CHILDS
+    OPERATION_RETRY_AFTER_CHILDS,
+    OPERATION_SKIP
 };
 
 

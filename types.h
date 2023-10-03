@@ -71,6 +71,13 @@ typedef struct operationContext {
     unsigned int overwrite_enabled;
 } operationContext;
 
+enum operationResult {
+    OPERATION_OK,
+    OPERATION_PARENT_OK,
+    OPERATION_RETRY_AFTER_CHILDS
+};
+
+
 typedef int (*OperationFunc)(const char *, const char *, operationContext *);
 
 

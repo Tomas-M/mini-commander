@@ -27,12 +27,13 @@ int file_has_extension(const char *filename, const char *extensions[]);
 void dive_into_directory(FileNode *current);
 int noesc(int ch);
 
+int panel_mass_action(OperationFunc func);
 int recursive_operation(const char *src, const char *tgt, operationContext *context, OperationFunc func);
-int panel_action(OperationFunc func);
 int copy_operation(const char *src, const char *tgt, operationContext *context);
 int move_operation(const char *src, const char *tgt, operationContext *context);
 int delete_operation(const char *src, const char *tgt, operationContext *context);
 int stats_operation(const char *src, const char *tgt, operationContext *context);
+int mkdir_recursive(const char *path, mode_t mode);
 
 // Macro to use shorten inline
 #define SHORTEN(name, width) ({ \

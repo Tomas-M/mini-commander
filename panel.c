@@ -37,6 +37,27 @@ int file_has_extension(const char *filename, const char *extensions[]) {
 }
 
 
+char* format_number(int num) {
+    static char buf[20]; // Assuming number won't exceed 20 characters with commas
+    char rev[20], *p = rev;
+    int count = 0;
+
+    do {
+        if (count++ % 3 == 0 && count > 1) *p++ = ',';
+        *p++ = '0' + num % 10;
+        num /= 10;
+    } while (num);
+
+    *p = '\0';
+    for (int i = 0, j = strlen(rev) - 1; j >= 0; j--, i++) {
+        buf[i] = rev[j];
+    }
+    buf[strlen(rev)] = '\0';
+
+    return buf;
+}
+
+
 void update_panel(WINDOW *win, PanelProp *panel) {
     FileNode *current = panel->files;
     int line = 1;  // Start from the second row to avoid the border
@@ -218,7 +239,9 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // print selected
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
     wattron(win, A_BOLD);
-    sprintf(info," %ld B in %d file%s ", panel->bytes_selected_files, panel->num_selected_files, panel->num_selected_files == 1 ? "" : "s");
+    char *num;
+    num = format_number(panel->bytes_selected_files);
+    sprintf(info," %s B in %d file%s ", num, panel->num_selected_files, panel->num_selected_files == 1 ? "" : "s");
     if (panel->num_selected_files > 0) mvwprintw(win, height - 3, width - strlen(info) - 3, "%s", info);
     wattroff(win, A_BOLD);
 

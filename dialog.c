@@ -199,6 +199,19 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
     wrefresh(win);
 }
 
+WINDOW *dialog_saved_screen;
+
+void dialog_save_screen() {
+   dialog_saved_screen = dupwin(newscr);
+}
+
+void dialog_restore_screen() {
+   overwrite(dialog_saved_screen, newscr);
+   wrefresh(newscr);
+   delwin(dialog_saved_screen);
+}
+
+
 int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
     int selected = 0;
     int prompt_is_present = prompt ? 1 : 0;
@@ -207,6 +220,8 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
     if (!prompt_is_present) {
         prompt = "";
     }
+
+    dialog_save_screen();
 
     WINDOW *win = create_dialog(title, buttons, prompt_is_present, is_danger);
     update_dialog_buttons(win, title, buttons, selected, prompt_is_present, editing_prompt, is_danger);
@@ -283,6 +298,7 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
                break;
             case KEY_F(10):
             case 27:
+                dialog_restore_screen();
                 return -1;
                 break;
             case KEY_UP:
@@ -324,6 +340,7 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
                     selected = 0;
                 }
                 delwin(win);
+                dialog_restore_screen();
                 return selected + 1;
                 break;
             default:

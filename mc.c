@@ -66,6 +66,9 @@ int noesc(int ch) {
                 case 13:
                     ch = KEY_F(3);
                     break;
+                case 14:
+                    ch = KEY_F(4);
+                    break;
                 default:
                     break;
             }
@@ -132,6 +135,9 @@ int main() {
             }
         }
 
+        if (ch == KEY_F(4)) { // F4
+        }
+
         if (ch == KEY_F(5)) { // F5
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
@@ -149,7 +155,6 @@ int main() {
             sprintf(title, "Move %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
             update_files_in_both_panels();
-            redraw_ui();
         }
 
         if (ch == KEY_F(7)) { // F7
@@ -178,9 +183,6 @@ int main() {
                         *slash_position = '\0';
                     }
                 } else {
-                    redraw_ui();
-                    update_panel(win1, &left_panel);
-                    update_panel(win2, &right_panel);
                     char title[CMD_MAX] = {};
                     sprintf(title, "Operation failed\n%s (%d)", strerror(err), err);
                     show_dialog(title, (char *[]) {"OK", NULL}, NULL, 1);
@@ -193,7 +195,6 @@ int main() {
         if (ch == KEY_F(8)) {
             if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
                 show_dialog("Cannot operate on ..", (char *[]) {"OK", NULL}, NULL, 1);
-                redraw_ui();
                 continue;
             }
             char title[CMD_MAX] = {};
@@ -202,7 +203,6 @@ int main() {
             if (btn == 1) {
                 panel_mass_action(delete_operation);
             }
-            redraw_ui();
         }
 
         if (ch == KEY_F(10)) {

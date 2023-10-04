@@ -87,6 +87,8 @@ int update_panel_files(PanelProp *panel) {
     original_head = panel->files;
     panel->files = NULL;
     panel->files_count = 0;
+    panel->num_selected_files = 0;
+    panel->bytes_selected_files = 0;
 
     if ((dir = opendir(panel->path)) == NULL) {
         return 0;
@@ -140,8 +142,8 @@ int update_panel_files(PanelProp *panel) {
         while (old_node != NULL) {
             if (old_node->is_selected && strcmp(new_node->name, old_node->name) == 0) {
                 new_node->is_selected = true;
-                active_panel->num_selected_files++;
-                active_panel->bytes_selected_files+=new_node->size;
+                panel->num_selected_files++;
+                if (!new_node->is_dir) panel->bytes_selected_files+=new_node->size;
                 break;
             }
             old_node = old_node->next;

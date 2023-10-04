@@ -163,7 +163,20 @@ int main() {
             if (btn == 1 && strlen(prompt) > 0) {
                 int err = mkdir_recursive(prompt, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
                 if (!err) {
-                    //sprintf(active_panel->file_under_cursor, prompt); // only up to slash, and only if dir exists
+                    // Check if prompt is relative (doesn't start with '/')
+                    if (prompt[0] != '/') {
+                        sprintf(active_panel->file_under_cursor, "%s", prompt);
+                    }
+                    // Check if prompt starts with active_panel->path
+                    else if (strncmp(prompt, active_panel->path, strlen(active_panel->path)) == 0) {
+                        // Fill only the remaining part
+                        sprintf(active_panel->file_under_cursor, "%s", prompt + strlen(active_panel->path) + 1);
+                    }
+
+                    char *slash_position = strchr(active_panel->file_under_cursor, '/');
+                    if (slash_position) {
+                        *slash_position = '\0';
+                    }
                 } else {
                     redraw_ui();
                     update_panel(win1, &left_panel);

@@ -133,22 +133,34 @@ int main() {
         }
 
         if (ch == KEY_F(5)) { // F5
-            char title[CMD_MAX] = {};
-            char prompt[CMD_MAX] = {};
+            char title[CMD_MAX] = {0};
+            char prompt[CMD_MAX] = {0};
             sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
-            // deselect all
+            update_files_in_both_panels();
+            redraw_ui();
+        }
+
+        if (ch == KEY_F(6)) { // F6
+            char title[CMD_MAX] = {0};
+            char prompt[CMD_MAX] = {0};
+            sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
+            sprintf(title, "Move %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            update_files_in_both_panels();
             redraw_ui();
         }
 
         if (ch == KEY_F(7)) { // F7
-            char title[CMD_MAX] = {};
-            char prompt[CMD_MAX] = {};
-            sprintf(prompt, active_panel->file_under_cursor);
+            char title[CMD_MAX] = {0};
+            char prompt[CMD_MAX] = {0};
+            if (strcmp(active_panel->file_under_cursor, "..") != 0) {
+                sprintf(prompt, active_panel->file_under_cursor);
+            }
             sprintf(title, "Enter directory name to create:");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
-            if (btn == 1) {
+            if (btn == 1 && strlen(prompt) > 0) {
                 int err = mkdir_recursive(prompt, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
                 if (!err) {
                     //sprintf(active_panel->file_under_cursor, prompt); // only up to slash, and only if dir exists
@@ -166,7 +178,7 @@ int main() {
         }
 
         if (ch == KEY_F(8)) {
-            if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor,"..") == 0) {
+            if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
                 show_dialog("Cannot operate on ..", (char *[]) {"OK", NULL}, NULL, 1);
                 redraw_ui();
                 continue;
@@ -326,10 +338,6 @@ int main() {
         }
 
         if (ch == KEY_IC) {  // Insert key
-            FileNode *current = active_panel->files;
-            for (int i = 0; i < active_panel->selected_index && current != NULL; i++) {
-                current = current->next;
-            }
             if (current && strcmp(current->name, "..") != 0) {
                 current->is_selected = !current->is_selected;
                 if (!current->is_dir) active_panel->bytes_selected_files += current->is_selected ? current->size : -1 * current->size;

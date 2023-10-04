@@ -255,8 +255,10 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
                 }
                 break;
             case KEY_RIGHT:
-                if (editing_prompt && cursor_position < strlen(prompt)) {
-                    cursor_position++;
+                if (editing_prompt) {
+                    if (cursor_position < strlen(prompt)) {
+                        cursor_position++;
+                    }
                     prompt_modified = 1;
                 } else if (!editing_prompt) {
                     if (buttons[selected + 1] != NULL) {

@@ -68,9 +68,9 @@ enum Color {
 typedef struct operationContext {
     unsigned long long total_size;
     unsigned int total_items;
-    unsigned int overwrite_enabled;
-    unsigned int confirm_all;
-    unsigned int confirm_none;
+    unsigned int confirm_all_yes;
+    unsigned int confirm_all_no;
+    char confirm_yes_prefix[CMD_MAX];
     unsigned int abort;
 } operationContext;
 

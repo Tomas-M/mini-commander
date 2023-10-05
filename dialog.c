@@ -360,3 +360,8 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
         update_dialog_buttons(win, title, buttons, selected, prompt_is_present, editing_prompt, is_danger);
     }
 }
+
+
+void show_errormsg(char * msg) {
+    show_dialog(msg, (char *[]) {"OK", NULL}, NULL, 1);
+}

@@ -21,5 +21,15 @@ code it provides in responses is intended for educational and informational
 purposes, and users are free to use it as they see fit. So, the license
 of Mini Commander is GNU GPL v3.
 
+
+Usage:
+
+    make
+    ./mc
+
+    # there is no make install
+    # copy ./mc to your path if you like
+
+
 Tomas M
 slax.org

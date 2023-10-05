@@ -70,15 +70,19 @@ typedef struct operationContext {
     unsigned int total_items;
     unsigned int confirm_all_yes;
     unsigned int confirm_all_no;
+    unsigned int skip_all;
+    unsigned int item_skipped;
     char confirm_yes_prefix[CMD_MAX];
     unsigned int abort;
 } operationContext;
 
 enum operationResult {
     OPERATION_OK = 0,
-    OPERATION_PARENT_OK,
+    OPERATION_RETRY,
+    OPERATION_PARENT_OK_PROCESS_CHILDS,
     OPERATION_RETRY_AFTER_CHILDS,
-    OPERATION_SKIP
+    OPERATION_SKIP,
+    OPERATION_ABORT
 };
 
 

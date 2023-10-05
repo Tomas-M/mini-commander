@@ -120,6 +120,12 @@ int main() {
 
         int ch = noesc(getch());
 
+        if (ch == 0) { // Ctrl+Space
+            // TODO: on directory item, use panel_mass_action with stats_operation to get total used bytes by given directory.
+            // Problem is panel_mass_action does not return context yet, and does update panel files which we do not want.
+            // After these problems are resolved, we can get bytes and update current->size accordingly.
+        }
+
         if (ch == KEY_F(3)) {
             if (current) {
                 if (current->is_dir) {
@@ -134,24 +140,39 @@ int main() {
         }
 
         if (ch == KEY_F(4)) { // F4
+            // TODO edit file
+            update_files_in_both_panels();
         }
 
         if (ch == KEY_F(5)) { // F5
+            if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
+                show_errormsg("Cannot operate on \"..\"");
+                continue;
+            }
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
             sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            if (btn == 1) {
+                panel_mass_action(copy_operation);
+            }
             update_files_in_both_panels();
-            redraw_ui();
         }
 
         if (ch == KEY_F(6)) { // F6
+            if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
+                show_errormsg("Cannot operate on \"..\"");
+                continue;
+            }
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
             sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Move %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            if (btn == 1) {
+                panel_mass_action(move_operation);
+            }
             update_files_in_both_panels();
         }
 
@@ -181,18 +202,15 @@ int main() {
                         *slash_position = '\0';
                     }
                 } else {
-                    char title[CMD_MAX] = {};
-                    sprintf(title, "Operation failed\n%s (%d)", strerror(err), err);
-                    show_dialog(title, (char *[]) {"OK", NULL}, NULL, 1);
+                    show_errormsg(SPRINTF("Operation failed\n%s (%d)", strerror(err), err));
                 }
                 update_files_in_both_panels();
             }
-            redraw_ui();
         }
 
         if (ch == KEY_F(8)) {
             if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
-                show_dialog("Cannot operate on ..", (char *[]) {"OK", NULL}, NULL, 1);
+                show_errormsg("Cannot operate on \"..\"");
                 continue;
             }
             char title[CMD_MAX] = {};
@@ -201,6 +219,7 @@ int main() {
             if (btn == 1) {
                 panel_mass_action(delete_operation);
             }
+            update_files_in_both_panels();
         }
 
         if (ch == KEY_F(10)) {

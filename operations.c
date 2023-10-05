@@ -33,17 +33,16 @@ int panel_mass_action(OperationFunc operation) {
         FileNode *temp = active_panel->files;
         while (temp != NULL) {
             if (temp->is_selected) {
+                context.item_skipped = 0;
                 sprintf(source_path, "%s/%s", active_panel->path, temp->name);
                 sprintf(target_path, "%s/%s", inactive_panel->path, temp->name);
                 err = recursive_operation(source_path, target_path, &context, operation);
                 if (context.abort == 1) break;
-                if (err == OPERATION_OK) {
+                if (err == OPERATION_OK && context.item_skipped == 0) {
                     if (temp->is_selected) {
                         active_panel->num_selected_files--;
                     }
                     temp->is_selected = 0;
-                } else if (err != OPERATION_SKIP) {
-                    // error was printed in operation()
                 }
             }
             temp = temp->next;
@@ -53,23 +52,24 @@ int panel_mass_action(OperationFunc operation) {
     return 0;
 }
 
+
 int recursive_operation(const char *src, const char *tgt, operationContext *context, OperationFunc operation) {
     int ret;
-    struct stat statbuf;
-    if (lstat(src, &statbuf) == -1) return -1;
 
     // try the operation right away
     ret = operation(src, tgt, context);
-    if (context->abort == 1) return 0;
+    if (context->abort == 1) return OPERATION_ABORT;
 
     if (ret == OPERATION_OK) {
         // operation on parent item was OK, finish here
-        if (context->abort == 1) return 0;
+        return ret;
     } else if (ret == OPERATION_SKIP) {
-        if (context->abort == 1) return 0;
-    } else {
-        // OPERATION_PARENT_OK || OPERATION_RETRY_AFTER_CHILDS || OPERATION_SKIP
-        // Recursive operation is needed for further processing
+        // do nothing, return skip
+        return ret;
+    } else if (ret == OPERATION_PARENT_OK_PROCESS_CHILDS || ret == OPERATION_RETRY_AFTER_CHILDS) {
+        // Recursive operation on a directory is needed for further processing
+        struct stat statbuf = {0};
+        lstat(src, &statbuf); // no error checking, we assume that if original operation was ok, this will be ok too
         if (S_ISDIR(statbuf.st_mode)) {
             DIR *dir = opendir(src);
             if (!dir) return -1;
@@ -87,7 +87,6 @@ int recursive_operation(const char *src, const char *tgt, operationContext *cont
             if (ret == OPERATION_RETRY_AFTER_CHILDS) {
                 // try again the initial src
                 ret = operation(src, tgt, context);
-
                 if (context->abort == 1) return 0;
                 if (ret == OPERATION_OK) {
                     // operation on parent item was OK, finish here
@@ -96,11 +95,17 @@ int recursive_operation(const char *src, const char *tgt, operationContext *cont
                     return ret;
                 }
             }
+        } else {
+            // no childs, end ok
+            return OPERATION_OK;
         }
     }
 
     return 0;
 }
+
+
+
 
 int stats_operation(const char *src, const char *tgt, operationContext *context) {
     struct stat statbuf;
@@ -116,53 +121,84 @@ int stats_operation(const char *src, const char *tgt, operationContext *context)
 
 
 int delete_operation(const char *src, const char *tgt, operationContext *context) {
-    int ret = 0;
-    struct stat statbuf;
-    if (lstat(src, &statbuf) == -1) return -1;
+    // tgt is ignored for delete operation
+    int ret = OPERATION_RETRY;
+    int btn = 0;
 
-    if (S_ISDIR(statbuf.st_mode)) {
-        ret = rmdir(src);
-        if (ret == 0) return OPERATION_OK;
-        if (errno == ENOTEMPTY || errno == EEXIST) {
-            // directory not empty, ask user what to do next
-            int btn = 0;
-            if (context->confirm_all_yes == 1) {
-                btn = 1;
-            }
-            if (strlen(context->confirm_yes_prefix) != 0 && strncmp(context->confirm_yes_prefix, src, strlen(context->confirm_yes_prefix)) == 0) {
-                btn = 1;
-            }
-            if (context->confirm_all_no == 1) {
-                btn = 2;
-            }
+    while (ret == OPERATION_RETRY) {
 
-            if (btn == 0) {
-                char title[CMD_MAX] = {};
-                sprintf(title, "Directory \"%s\" not empty.\nDelete it recursively?", src);
-                btn = show_dialog(title, (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, NULL, 1);
-            }
+        struct stat statbuf;
+        ret = lstat(src, &statbuf);
+        if (ret != 0) {
+            if (context->skip_all == 1) return OPERATION_SKIP;
+            btn = show_dialog(SPRINTF("Stat failed for \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
+            if (btn == 1 || btn == 0) { context->item_skipped = 1; return OPERATION_SKIP; }
+            if (btn == 2) { context->skip_all = 1; return OPERATION_SKIP; }
+            if (btn == 3) { ret = OPERATION_RETRY; continue; }
+            if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
+        }
 
-            if (btn == 1) { // yes
-                sprintf(context->confirm_yes_prefix, "%s/", src);
-                return OPERATION_RETRY_AFTER_CHILDS;
-            } else if (btn == 2) { // no
-                return OPERATION_SKIP;
-            } else if (btn == 3) { // all
-                context->confirm_all_yes = 1;
-                return OPERATION_RETRY_AFTER_CHILDS;
-            } else if (btn == 4) { // none
-                context->confirm_all_no = 1;
-                return OPERATION_SKIP;
-            } else if (btn == 5) { // abort
-                context->abort = 1;
-                return OPERATION_SKIP;
+        if (S_ISDIR(statbuf.st_mode)) {
+            ret = rmdir(src);
+            if (ret == 0) return OPERATION_OK;
+
+            // if error is directory not empty, ask user to delete subdirectories
+            if (errno == ENOTEMPTY || errno == EEXIST) {
+                // directory not empty, ask user what to do next
+                btn = 0;
+                if (context->confirm_all_yes == 1) {
+                    btn = 1;
+                }
+                if (strlen(context->confirm_yes_prefix) != 0 && strncmp(context->confirm_yes_prefix, src, strlen(context->confirm_yes_prefix)) == 0) {
+                    btn = 1;
+                }
+                if (context->confirm_all_no == 1) {
+                    btn = 2;
+                }
+
+                if (btn == 0) {
+                    char title[CMD_MAX] = {};
+                    sprintf(title, "Directory \"%s\" not empty.\nDelete it recursively?\n", src);
+                    btn = show_dialog(title, (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, NULL, 1);
+                }
+
+                if (btn == 1) { // yes
+                    sprintf(context->confirm_yes_prefix, "%s", src);
+                    return OPERATION_RETRY_AFTER_CHILDS;
+                } else if (btn == 2 || btn == 0) { // no
+                    context->item_skipped = 1;
+                    return OPERATION_SKIP;
+                } else if (btn == 3) { // all
+                    context->confirm_all_yes = 1;
+                    return OPERATION_RETRY_AFTER_CHILDS;
+                } else if (btn == 4) { // none
+                    context->item_skipped = 1;
+                    context->confirm_all_no = 1;
+                    return OPERATION_SKIP;
+                } else if (btn == 5) { // abort
+                    context->abort = 1;
+                    return OPERATION_SKIP;
+                }
+            } else {
+                if (context->skip_all == 1) return OPERATION_SKIP;
+                btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
+                if (btn == 0 || btn == 1) { context->item_skipped = 1; return OPERATION_SKIP; }
+                if (btn == 2) { context->item_skipped = 1; context->skip_all = 1; return OPERATION_SKIP; }
+                if (btn == 3) { ret = OPERATION_RETRY; continue; }
+                if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
+            }
+        } else {
+            ret = unlink(src);
+            if (ret == 0) return OPERATION_OK;
+            else {
+                if (context->skip_all == 1) return OPERATION_SKIP;
+                btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
+                if (btn == 0 || btn == 1) return OPERATION_SKIP;
+                if (btn == 2) { context->item_skipped = 1; context->skip_all = 1; return OPERATION_SKIP; }
+                if (btn == 3) { ret = OPERATION_RETRY; continue; }
+                if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
             }
         }
-        else return errno;
-    } else {
-        ret = unlink(src);
-        if (ret == 0) return OPERATION_OK;
-        else return errno;
     }
 }
 

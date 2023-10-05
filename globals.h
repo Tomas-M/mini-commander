@@ -19,6 +19,7 @@ int lines(char * title);
 WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int is_danger);
 void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt, int is_danger);
 int show_dialog(char *title, char *buttons[], char *prompt, int is_danger);
+void show_errormsg(char * msg);
 void cursor_to_cmd(void);
 void update_cmd(void);
 void display_line(WINDOW *win, file_lines *line, int max_x, int current_col);
@@ -42,5 +43,10 @@ int mkdir_recursive(const char *path, mode_t mode);
     result_buf; \
 })
 
+#define SPRINTF(fmt, ...) ({ \
+    char tmp[CMD_MAX]; \
+    sprintf(tmp, fmt, ##__VA_ARGS__); \
+    tmp; \
+})
 
 #endif // GLOBALS_H

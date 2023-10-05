@@ -38,12 +38,10 @@ char cmd[CMD_MAX] = {0};
 int cmd_len = 0;
 
 int noesc(int ch) {
+    int num = 0;
     if (ch == 27) {  // Escape character
-        getch();  // Discard the '[' character
-
-        int num = 0;
         ch = getch();
-        while (ch == '[') {
+        while (ch == '[') {  // Discard the '[' character
             ch = getch();
         }
 

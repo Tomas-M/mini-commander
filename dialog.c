@@ -255,7 +255,7 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
         }
         wrefresh(win);
 
-        ch = getch();
+        ch = noesc(getch());
         switch (ch) {
             case KEY_LEFT:
                 if (editing_prompt && cursor_position > 0) {

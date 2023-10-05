@@ -37,6 +37,7 @@ void init_screen() {
     initialize_ncurses();
     refresh();
     mouseinterval(50);
+    ESCDELAY = 50;
     start_color();
     raw();
     keypad(stdscr, TRUE);

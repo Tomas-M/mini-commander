@@ -167,11 +167,13 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
             if (errno == ENOTEMPTY || errno == EEXIST) {
                 // directory not empty, ask user what to do next
                 btn = 0;
+                int prefix_already_matches = 0;
                 if (context->confirm_all_yes == 1) {
                     btn = 1;
                 }
                 if (strlen(context->confirm_yes_prefix) != 0 && strncmp(context->confirm_yes_prefix, src, strlen(context->confirm_yes_prefix)) == 0) {
                     btn = 1;
+                    prefix_already_matches = 1;
                 }
                 if (context->confirm_all_no == 1) {
                     btn = 2;
@@ -184,7 +186,9 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
                 }
 
                 if (btn == 1) { // yes
-                    sprintf(context->confirm_yes_prefix, "%s", src);
+                    if (!prefix_already_matches) {
+                        sprintf(context->confirm_yes_prefix, "%s", src);
+                    }
                     return OPERATION_RETRY_AFTER_CHILDS;
                 } else if (btn == 2 || btn == 0) { // no
                     context->keep_item_selected = 1;

@@ -27,14 +27,21 @@ int view_file(char *filename);
 int file_has_extension(const char *filename, const char *extensions[]);
 void dive_into_directory(FileNode *current);
 int noesc(int ch);
-
-int panel_mass_action(OperationFunc func);
+void format_size_with_units(off_t size, char *size_str, size_t len, int maxlen);
+void show_shadow(WINDOW *win);
+void dialog_save_screen();
+void dialog_restore_screen();
+void create_progress_dialog(int title_lines);
+int update_progress_dialog(char *title, int current_progress, int total_progress, char *infotext);
+int update_progress_dialog_delta(char *title, int current_progress, int total_progress, char *infotext);
+int panel_mass_action(OperationFunc func, char *tgt, operationContext *context);
 int recursive_operation(const char *src, const char *tgt, operationContext *context, OperationFunc func);
 int copy_operation(const char *src, const char *tgt, operationContext *context);
 int move_operation(const char *src, const char *tgt, operationContext *context);
 int delete_operation(const char *src, const char *tgt, operationContext *context);
-int stats_operation(const char *src, const char *tgt, operationContext *context);
+int countstats_operation(const char *src, const char *tgt, operationContext *context);
 int mkdir_recursive(const char *path, mode_t mode);
+int format_number(off_t num, char *str);
 
 // Macro to use shorten inline
 #define SHORTEN(name, width) ({ \

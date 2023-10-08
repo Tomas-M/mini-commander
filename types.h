@@ -66,14 +66,16 @@ enum Color {
 };
 
 typedef struct operationContext {
-    unsigned long long total_size;
-    unsigned int total_items;
-    unsigned int confirm_all_yes;
-    unsigned int confirm_all_no;
-    unsigned int skip_all;
-    unsigned int item_skipped;
+    off_t current_size;
+    off_t current_items;
+    off_t total_size;
+    off_t total_items;
+    int confirm_all_yes;
+    int confirm_all_no;
+    int skip_all;
+    int keep_item_selected;
     char confirm_yes_prefix[CMD_MAX];
-    unsigned int abort;
+    int abort;
 } operationContext;
 
 enum operationResult {
@@ -96,6 +98,7 @@ extern PanelProp* active_panel;
 // Global windows
 extern WINDOW *win1;
 extern WINDOW *win2;
+extern WINDOW *progress;
 
 extern struct utsname unameData;
 extern struct passwd *pw;

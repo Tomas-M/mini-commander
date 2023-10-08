@@ -37,7 +37,7 @@ int file_has_extension(const char *filename, const char *extensions[]) {
 }
 
 
-char* format_number(int num) {
+int format_number(off_t num, char *str) {
     static char buf[20]; // Assuming number won't exceed 20 characters with commas
     char rev[20], *p = rev;
     int count = 0;
@@ -53,9 +53,32 @@ char* format_number(int num) {
         buf[i] = rev[j];
     }
     buf[strlen(rev)] = '\0';
-
-    return buf;
+    sprintf(str, "%s", buf);
+    return 0;
 }
+
+
+void format_size_with_units(off_t size, char *size_str, size_t len, int maxlen) {
+    snprintf(size_str, len, "%lld", size);
+
+    if (strlen(size_str) > maxlen) {
+        size /= 1024;
+        snprintf(size_str, len, "%lldK", size);
+        if (strlen(size_str) > maxlen) {
+            size /= 1024;
+            snprintf(size_str, len, "%lldM", size);
+            if (strlen(size_str) > maxlen) {
+                size /= 1024;
+                snprintf(size_str, len, "%lldG", size);
+                if (strlen(size_str) > maxlen) {
+                    size /= 1024;
+                    snprintf(size_str, len, "%lldT", size);
+                }
+            }
+        }
+    }
+}
+
 
 
 void update_panel(WINDOW *win, PanelProp *panel) {
@@ -154,26 +177,8 @@ void update_panel(WINDOW *win, PanelProp *panel) {
             strftime(date_str, sizeof(date_str), "%b %d %H:%M", tm); // Display time if same year
         }
 
-        long long size = current->size;
         char size_str[50];  // Buffer to hold the size and suffix
-        snprintf(size_str, sizeof(size_str), "%lld", size);
-
-        if (strlen(size_str) > 7) {
-            size /= 1024;
-            snprintf(size_str, sizeof(size_str), "%lldK", size);
-            if (strlen(size_str) > 7) {
-                size /= 1024;
-                snprintf(size_str, sizeof(size_str), "%lldM", size);
-                if (strlen(size_str) > 7) {
-                    size /= 1024;
-                    snprintf(size_str, sizeof(size_str), "%lldG", size);
-                    if (strlen(size_str) > 7) {
-                       size /= 1024;
-                       snprintf(size_str, sizeof(size_str), "%lldT", size);
-                    }
-                }
-            }
-        }
+        format_size_with_units(current->size, size_str, sizeof(size_str), 7);
 
         int updir = (current->is_dir && strcmp(current->name, "..") == 0);
         if (updir) {
@@ -243,8 +248,8 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // print selected
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
     wattron(win, A_BOLD);
-    char *num;
-    num = format_number(panel->bytes_selected_files);
+    char num[20];
+    format_number(panel->bytes_selected_files, num);
     sprintf(info," %s B in %d file%s ", num, panel->num_selected_files, panel->num_selected_files == 1 ? "" : "s");
     if (panel->num_selected_files > 0) mvwprintw(win, height - 3, width - strlen(info) - 3, "%s", info);
     wattroff(win, A_BOLD);

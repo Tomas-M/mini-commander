@@ -16,29 +16,16 @@
 
 int lines(char * title)
 {
+    if (title == NULL) return 0;
     int newlines = 0;
     for (int i = 0; title[i]; i++) {
         if (title[i] == '\n') {
             newlines++;
         }
     }
+    if (strlen(title) != 0) newlines++;
     return newlines;
 }
-
-
-WINDOW *get_window_at(int y, int x) {
-    WINDOW *wins[] = {win2, win1};
-    for (int i = 0; i < 2; i++) {
-        int win_y, win_x, height, width;
-        getbegyx(wins[i], win_y, win_x);
-        getmaxyx(wins[i], height, width);
-        if (y >= win_y && y < win_y + height && x >= win_x && x < win_x + width) {
-            return wins[i];
-        }
-    }
-    return NULL;
-}
-
 
 void show_shadow(WINDOW *win) {
     int start_y, start_x, height, width;
@@ -50,16 +37,13 @@ void show_shadow(WINDOW *win) {
     getbegyx(win, start_y, start_x);
     getmaxyx(win, height, width);
 
-    // get shift for second panel win2
-    int w2shift_x, w2shift_y = 0;
-    getbegyx(win2, w2shift_y, w2shift_x);
+    WINDOW *wholescreen = dupwin(newscr);
 
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < 2; j++) {
             int x = start_x + width + j;
             int y = start_y + i + 1;
-            WINDOW *w = get_window_at(y, x);
-            chtype ch = mvwinch(w, y - (w == win2 ? w2shift_y : 0), x - (w == win2 ? w2shift_x : 0));
+            chtype ch = mvwinch(wholescreen, y, x);
             mvaddch(y, x, (ch & A_CHARTEXT));
         }
     }
@@ -67,11 +51,11 @@ void show_shadow(WINDOW *win) {
     for (int i = 2; i < width + 2; i++) {
         int x = start_x + i;
         int y = start_y + height;
-        WINDOW *w = get_window_at(y, x);
-        chtype ch = mvwinch(w, y - (w == win2 ? w2shift_y : 0), x - (w == win2 ? w2shift_x : 0));
+        chtype ch = mvwinch(wholescreen, y, x);
         mvaddch(y, x, (ch & A_CHARTEXT));
     }
 
+    delwin(wholescreen);
     wmove(win, cur_y, cur_x);
     refresh();
 }
@@ -107,7 +91,7 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
 
     width = width + 2;
 
-    int height = (prompt_is_present ? 6 : 5) + lines(title) + 2;
+    int height = (prompt_is_present ? 6 : 5) + lines(title) + 1;
     int start_y = (max_y - height) / 2 - (is_danger ? 8 : 0);
     int start_x = (max_x - width) / 2;
 
@@ -167,7 +151,7 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
     int move_cursor_pos = 0;
 
     // Adjust the y position based on whether a prompt is present
-    int y_pos = prompt_present ? 5 : 4;
+    int y_pos = prompt_present ? 4 : 3;
     i = 0;
     while (buttons[i] != NULL) {
         if (i == selected && !editing_prompt) {
@@ -248,10 +232,10 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
             }
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
             if (!prompt_modified) wattron(win, A_BOLD);
-            mvwprintw(win, 3 + lines(title), 3, "%-*.*s", max_prompt_display, max_prompt_display, prompt + prompt_offset);
+            mvwprintw(win, 2 + lines(title), 3, "%-*.*s", max_prompt_display, max_prompt_display, prompt + prompt_offset);
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
             if (!prompt_modified) wattroff(win, A_BOLD);
-            wmove(win, 3 + lines(title), 3 + cursor_position - prompt_offset);
+            wmove(win, 2 + lines(title), 3 + cursor_position - prompt_offset);
         }
         wrefresh(win);
 

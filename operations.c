@@ -18,27 +18,34 @@
 #include "globals.h"
 
 
-int panel_mass_action(OperationFunc operation) {
+int panel_mass_action(OperationFunc operation, char *tgt, operationContext *context) {
     int err = 0;
     char source_path[CMD_MAX] = {0};
     char target_path[CMD_MAX] = {0};
-    PanelProp * inactive_panel = active_panel == &left_panel ? &right_panel : &left_panel;
-    operationContext context = {0};
+
+    WINDOW *saved_screen;
+    saved_screen = dupwin(newscr);
+
+    create_progress_dialog(1);
 
     if (active_panel->num_selected_files == 0) {
         sprintf(source_path, "%s/%s", active_panel->path, active_panel->file_under_cursor);
-        sprintf(target_path, "%s/%s", inactive_panel->path, active_panel->file_under_cursor);
-        err = recursive_operation(source_path, target_path, &context, operation);
+        if (tgt[0] == '/') { // absolute path
+            sprintf(target_path, "%s/%s", tgt, active_panel->file_under_cursor);
+        } else { // relative path
+            sprintf(target_path, "%s/%s", active_panel->path, tgt);
+        }
+        err = recursive_operation(source_path, target_path, context, operation);
     } else {
         FileNode *temp = active_panel->files;
         while (temp != NULL) {
             if (temp->is_selected) {
-                context.item_skipped = 0;
+                context->keep_item_selected = 0;
                 sprintf(source_path, "%s/%s", active_panel->path, temp->name);
-                sprintf(target_path, "%s/%s", inactive_panel->path, temp->name);
-                err = recursive_operation(source_path, target_path, &context, operation);
-                if (context.abort == 1) break;
-                if (err == OPERATION_OK && context.item_skipped == 0) {
+                sprintf(target_path, "%s/%s", tgt, temp->name);
+                err = recursive_operation(source_path, target_path, context, operation);
+                if (context->abort == 1) break;
+                if (err == OPERATION_OK && context->keep_item_selected == 0) {
                     if (temp->is_selected) {
                         active_panel->num_selected_files--;
                     }
@@ -48,13 +55,20 @@ int panel_mass_action(OperationFunc operation) {
             temp = temp->next;
         }
     }
-    update_files_in_both_panels();
+
+    update_progress_dialog_delta(NULL, 0, 0, NULL); // reset internal count of lines, and internal time counter
+    delwin(progress); // was created by create_progress_dialog
+
+    overwrite(saved_screen, newscr);
+    delwin(saved_screen);
+    wrefresh(newscr);
     return 0;
 }
 
 
 int recursive_operation(const char *src, const char *tgt, operationContext *context, OperationFunc operation) {
     int ret;
+    context->current_items++;
 
     // try the operation right away
     ret = operation(src, tgt, context);
@@ -107,7 +121,7 @@ int recursive_operation(const char *src, const char *tgt, operationContext *cont
 
 
 
-int stats_operation(const char *src, const char *tgt, operationContext *context) {
+int countstats_operation(const char *src, const char *tgt, operationContext *context) {
     struct stat statbuf;
     if (lstat(src, &statbuf) != -1) {
         context->total_items++;
@@ -115,7 +129,12 @@ int stats_operation(const char *src, const char *tgt, operationContext *context)
            context->total_size += statbuf.st_size;
         }
     }
-    return 0;
+    char infotext[CMD_MAX];
+    char num[30];
+    format_number(context->total_size, num);
+    sprintf(infotext, "Items: %d\nSize: %s bytes", context->total_items, num);
+    update_progress_dialog_delta(SPRINTF("Scanning %s", src), 0, 0, infotext);
+    return OPERATION_PARENT_OK_PROCESS_CHILDS;
 }
 
 
@@ -125,6 +144,8 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
     int ret = OPERATION_RETRY;
     int btn = 0;
 
+    update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, context->current_items * 100 / context->total_items, NULL);
+
     while (ret == OPERATION_RETRY) {
 
         struct stat statbuf;
@@ -132,8 +153,8 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
         if (ret != 0) {
             if (context->skip_all == 1) return OPERATION_SKIP;
             btn = show_dialog(SPRINTF("Stat failed for \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
-            if (btn == 1 || btn == 0) { context->item_skipped = 1; return OPERATION_SKIP; }
-            if (btn == 2) { context->skip_all = 1; return OPERATION_SKIP; }
+            if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
+            if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
             if (btn == 3) { ret = OPERATION_RETRY; continue; }
             if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
         }
@@ -166,13 +187,13 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
                     sprintf(context->confirm_yes_prefix, "%s", src);
                     return OPERATION_RETRY_AFTER_CHILDS;
                 } else if (btn == 2 || btn == 0) { // no
-                    context->item_skipped = 1;
+                    context->keep_item_selected = 1;
                     return OPERATION_SKIP;
                 } else if (btn == 3) { // all
                     context->confirm_all_yes = 1;
                     return OPERATION_RETRY_AFTER_CHILDS;
                 } else if (btn == 4) { // none
-                    context->item_skipped = 1;
+                    context->keep_item_selected = 1;
                     context->confirm_all_no = 1;
                     return OPERATION_SKIP;
                 } else if (btn == 5) { // abort
@@ -182,8 +203,8 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
             } else {
                 if (context->skip_all == 1) return OPERATION_SKIP;
                 btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
-                if (btn == 0 || btn == 1) { context->item_skipped = 1; return OPERATION_SKIP; }
-                if (btn == 2) { context->item_skipped = 1; context->skip_all = 1; return OPERATION_SKIP; }
+                if (btn == 0 || btn == 1) { context->keep_item_selected = 1; return OPERATION_SKIP; }
+                if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
                 if (btn == 3) { ret = OPERATION_RETRY; continue; }
                 if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
             }
@@ -194,7 +215,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
                 if (context->skip_all == 1) return OPERATION_SKIP;
                 btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
                 if (btn == 0 || btn == 1) return OPERATION_SKIP;
-                if (btn == 2) { context->item_skipped = 1; context->skip_all = 1; return OPERATION_SKIP; }
+                if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
                 if (btn == 3) { ret = OPERATION_RETRY; continue; }
                 if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
             }
@@ -204,7 +225,136 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
 
 
 int copy_operation(const char *src, const char *tgt, operationContext *context) {
+    int ret = OPERATION_RETRY;
+
+    while (ret == OPERATION_RETRY) {
+
+        int btn = 0;
+        char errmsg[CMD_MAX] = {0};
+        int target_exists = 1;
+
+        do {
+            struct stat statbufsrc;
+            if (lstat(src, &statbufsrc) != 0) {
+                sprintf(errmsg,"Stat operation failed for %s", src);
+                break;
+            }
+
+            struct stat statbuftgt;
+            if (lstat(tgt, &statbuftgt) != 0) {
+                if (errno == ENOENT) {
+                    target_exists = 0;
+                } else { // other error
+                    sprintf(errmsg,"Stat operation failed for %s", tgt);
+                    break;
+                }
+            }
+
+            // source is a regular file
+            if (S_ISREG(statbufsrc.st_mode)) {
+
+                if (target_exists && S_ISDIR(statbuftgt.st_mode)) {
+                    sprintf(errmsg,"Cannot overwrite directory\n%s\nwith a file\n%s", tgt, src);
+                    break;
+                }
+
+                int src_fd = open(src, O_RDONLY);
+                if (src_fd == -1) {
+                    sprintf(errmsg,"Cannot open source file for reading:\n%s", src);
+                    break;
+                }
+
+                int tgt_fd = open(tgt, O_WRONLY | O_CREAT, statbufsrc.st_mode);
+                if (tgt_fd == -1) {
+                    close(src_fd);
+                    sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
+                    break;
+                }
+
+                char buffer[16384];
+                ssize_t bytes;
+                while ((bytes = read(src_fd, buffer, sizeof(buffer))) > 0) {
+                    if (write(tgt_fd, buffer, bytes) != bytes) {
+                        close(src_fd);
+                        close(tgt_fd);
+                        sprintf(errmsg,"Cannot write data to:\n%s", tgt);
+                        break;
+                    }
+                }
+
+                if (strlen(errmsg) > 0) break; // second level break
+
+                if (bytes == -1) {
+                    // Handle error
+                    close(src_fd);
+                    close(tgt_fd);
+                    sprintf(errmsg,"Cannot read data from:\n%s", src);
+                    break;
+                }
+
+                close(src_fd);
+                close(tgt_fd);
+                ret = 0;
+            }
+            // source is a directory
+            else if (S_ISDIR(statbufsrc.st_mode)) {
+                if (target_exists && S_ISDIR(statbuftgt.st_mode)) {
+                    // do not overwrite existing directory
+                    ret = 0;
+                } else if (mkdir(tgt, statbufsrc.st_mode) == -1) {
+                    sprintf(errmsg,"Failed to create directory:\n%s", tgt);
+                    break;
+                } else {
+                    ret = 0;
+                }
+            }
+            // source is a symlink
+            else if (S_ISLNK(statbufsrc.st_mode)) {
+                char buffer[CMD_MAX];
+                ssize_t len = readlink(src, buffer, sizeof(buffer) - 1);
+                if (len == -1) {
+                    sprintf(errmsg,"Failed to read symbolic link from\n%s", src);
+                    break;
+                }
+                buffer[len] = '\0';
+                if (symlink(buffer, tgt) == -1) {
+                    sprintf(errmsg,"Failed to create symbolic link\n%s", tgt);
+                    break;
+                } else {
+                    ret = 0;
+                }
+            }
+            // source is a character device or block device
+            else if (S_ISCHR(statbufsrc.st_mode) || S_ISBLK(statbufsrc.st_mode)) {
+                if (mknod(tgt, statbufsrc.st_mode, statbufsrc.st_rdev) == -1) {
+                    sprintf(errmsg,"Failed to create special file\n%s", tgt);
+                    break;
+                } else {
+                    ret = 0;
+                }
+            }
+        } while (false);
+
+
+        if (strlen(errmsg) > 0) {
+            if (context->skip_all == 1) return OPERATION_SKIP;
+            if (errno != 0) {
+                btn = show_dialog(SPRINTF("%s\n%s (%d)", errmsg, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
+            } else {
+                btn = show_dialog(SPRINTF("%s", errmsg), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
+            }
+            if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
+            if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
+            if (btn == 3) { ret = OPERATION_RETRY; continue; }
+            if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
+        }
+
+        return OPERATION_PARENT_OK_PROCESS_CHILDS;
+    }
+
+    return 0;
 }
+
 
 int move_operation(const char *src, const char *tgt, operationContext *context) {
 }
@@ -258,45 +408,5 @@ int mkdir_recursive(const char *path, mode_t mode) {
     }
 
     return mkdir(tmp, mode) ? errno : 0;
-}
-
-
-
-int copy_file_or_directory(const char *src, const char *dest) {
-    struct stat statbuf;
-    int result = lstat(src, &statbuf);
-    if (result == -1) {
-        perror("lstat");
-        return -1;
-    }
-
-    if (S_ISREG(statbuf.st_mode)) {
-        int src_fd = open(src, O_RDONLY);
-        int dest_fd = open(dest, O_WRONLY | O_CREAT, statbuf.st_mode);
-        char buffer[4096];
-        ssize_t bytes;
-        while ((bytes = read(src_fd, buffer, sizeof(buffer))) > 0) {
-            write(dest_fd, buffer, bytes);
-        }
-        close(src_fd);
-        close(dest_fd);
-    } else if (S_ISDIR(statbuf.st_mode)) {
-        result = mkdir(dest, statbuf.st_mode);
-        if (result == -1) {
-            perror("mkdir");
-            return -1;
-        }
-    } else if (S_ISLNK(statbuf.st_mode)) {
-        char buffer[4096];
-        ssize_t len = readlink(src, buffer, sizeof(buffer) - 1);
-        if (len != -1) {
-            buffer[len] = '\0';
-            symlink(buffer, dest);
-        }
-    } else if (S_ISCHR(statbuf.st_mode) || S_ISBLK(statbuf.st_mode)) {
-        mknod(dest, statbuf.st_mode, statbuf.st_rdev);
-    }
-
-    return 0;
 }
 

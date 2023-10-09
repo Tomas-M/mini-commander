@@ -155,7 +155,13 @@ int main() {
             sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
             if (btn == 1) {
-                panel_mass_action(copy_operation, prompt, NULL);
+                operationContext stats = {0};
+                operationContext context = {0};
+                panel_mass_action(countstats_operation, "", &stats);
+                // if (stats.abort == 1) abort
+                context.total_items = stats.total_items;
+                context.total_size =  stats.total_size;
+                panel_mass_action(copy_operation, prompt, &context);
             }
             update_files_in_both_panels();
         }
@@ -226,7 +232,6 @@ int main() {
                 context.total_items = stats.total_items;
                 context.total_size =  stats.total_size;
                 panel_mass_action(delete_operation, "", &context);
-
             }
             update_files_in_both_panels();
             redraw_ui();

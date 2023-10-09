@@ -134,12 +134,15 @@ int countstats_operation(const char *src, const char *tgt, operationContext *con
     format_number(context->total_size, num);
     sprintf(infotext, "Items: %d\nSize: %s bytes", context->total_items, num);
     update_progress_dialog_delta(SPRINTF("Scanning %s", src), 0, 0, infotext);
+    context->keep_item_selected = 1; // don't unselect items on stat
     return OPERATION_PARENT_OK_PROCESS_CHILDS;
 }
 
 
 
 int delete_operation(const char *src, const char *tgt, operationContext *context) {
+mvprintw(10,10,"%s %s",src,tgt);
+getch();
     // tgt is ignored for delete operation
     int ret = OPERATION_RETRY;
     int btn = 0;
@@ -230,6 +233,9 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
 
 int copy_operation(const char *src, const char *tgt, operationContext *context) {
     int ret = OPERATION_RETRY;
+    errno = 0; // reset
+
+    update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), 0, context->current_items * 100 / context->total_items, NULL);
 
     while (ret == OPERATION_RETRY) {
 
@@ -268,15 +274,49 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     break;
                 }
 
-                int tgt_fd = open(tgt, O_WRONLY | O_CREAT, statbufsrc.st_mode);
+                int tgt_fd = open(tgt, O_WRONLY | O_CREAT | O_EXCL, statbufsrc.st_mode);
                 if (tgt_fd == -1) {
-                    close(src_fd);
-                    sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
-                    break;
+                    if (errno == EEXIST) {
+                        // ask user if overwrite
+                        btn = 0;
+                        if (context->confirm_all_yes == 1) btn = 1;
+                        if (context->confirm_all_no == 1) btn = 2;
+                        if (btn == 0) {
+                            btn = show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, NULL, 1);
+                        }
+                        if (btn == 3) { // All
+                            context->confirm_all_yes = 1;
+                            btn = 1;
+                        }
+                        if (btn == 1) { // Yes
+                            tgt_fd = open(tgt, O_WRONLY | O_CREAT | O_TRUNC, statbufsrc.st_mode);
+                            if (tgt_fd == -1) {
+                                close(src_fd);
+                                sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
+                            }
+                        }
+                        if (btn == 2) { // No
+                            close(src_fd);
+                            return OPERATION_SKIP;
+                        }
+                        if (btn == 4) { // None
+                            context->confirm_all_no = 1;
+                            return OPERATION_SKIP;
+                        }
+                        if (btn == 5) {
+                            context->abort = 1;
+                            return OPERATION_ABORT;
+                        }
+                    } else {
+                        close(src_fd);
+                        sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
+                        break;
+                    }
                 }
 
                 char buffer[16384];
-                ssize_t bytes;
+                ssize_t bytes = 0;
+                ssize_t total_bytes = 0;
                 while ((bytes = read(src_fd, buffer, sizeof(buffer))) > 0) {
                     if (write(tgt_fd, buffer, bytes) != bytes) {
                         close(src_fd);
@@ -284,6 +324,8 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                         sprintf(errmsg,"Cannot write data to:\n%s", tgt);
                         break;
                     }
+                    total_bytes += bytes;
+                    int ret = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), total_bytes * 100 / statbufsrc.st_size, context->current_items * 100 / context->total_items, NULL);
                 }
 
                 if (strlen(errmsg) > 0) break; // second level break

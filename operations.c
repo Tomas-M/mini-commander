@@ -35,6 +35,9 @@ int panel_mass_action(OperationFunc operation, char *tgt, operationContext *cont
         } else { // relative path
             sprintf(target_path, "%s/%s", active_panel->path, tgt);
         }
+//        if (directory_exists(target_path)) {
+//TODO            sprintf("%s/%s", target_path, )
+//        }
         err = recursive_operation(source_path, target_path, context, operation);
     } else {
         FileNode *temp = active_panel->files;
@@ -122,6 +125,7 @@ int recursive_operation(const char *src, const char *tgt, operationContext *cont
 
 
 int countstats_operation(const char *src, const char *tgt, operationContext *context) {
+
     struct stat statbuf;
     if (lstat(src, &statbuf) != -1) {
         context->total_items++;
@@ -131,23 +135,38 @@ int countstats_operation(const char *src, const char *tgt, operationContext *con
     }
     char infotext[CMD_MAX];
     char num[30];
+
+    context->keep_item_selected = 1; // don't unselect items on stat
     format_number(context->total_size, num);
     sprintf(infotext, "Items: %d\nSize: %s bytes", context->total_items, num);
-    update_progress_dialog_delta(SPRINTF("Scanning %s", src), 0, 0, infotext);
-    context->keep_item_selected = 1; // don't unselect items on stat
+
+    int delta = update_progress_dialog_delta(SPRINTF("Scanning %s", src), 0, 0, infotext);
+    if (delta == 1) {
+        // ignored here
+    }
+    if (delta == 2) {
+        context->abort = 1;
+        return OPERATION_ABORT;
+    }
+
     return OPERATION_PARENT_OK_PROCESS_CHILDS;
 }
 
 
 
 int delete_operation(const char *src, const char *tgt, operationContext *context) {
-mvprintw(10,10,"%s %s",src,tgt);
-getch();
     // tgt is ignored for delete operation
     int ret = OPERATION_RETRY;
     int btn = 0;
 
-    update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, context->current_items * 100 / context->total_items, NULL);
+    int delta = update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, context->current_items * 100 / context->total_items, NULL);
+    if (delta == 1) {
+        // ignored
+    }
+    if (delta == 2) {
+        context->abort = 1;
+        return OPERATION_ABORT;
+    }
 
     while (ret == OPERATION_RETRY) {
 
@@ -235,7 +254,14 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
     int ret = OPERATION_RETRY;
     errno = 0; // reset
 
-    update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), 0, context->current_items * 100 / context->total_items, NULL);
+    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), 0, context->current_items * 100 / context->total_items, NULL);
+    if (delta == 1) {
+        // ignored here
+    }
+    if (delta == 2) {
+        context->abort = 1;
+        return OPERATION_ABORT;
+    }
 
     while (ret == OPERATION_RETRY) {
 
@@ -325,7 +351,18 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                         break;
                     }
                     total_bytes += bytes;
-                    int ret = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), total_bytes * 100 / statbufsrc.st_size, context->current_items * 100 / context->total_items, NULL);
+                    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), total_bytes * 100 / statbufsrc.st_size, context->current_items * 100 / context->total_items, NULL);
+                    if (delta > 0) {
+                        close(src_fd);
+                        close(tgt_fd);
+                        int answer = show_dialog(SPRINTF("Incomplete file was retrieved. Keep it?\n%s", tgt), (char *[]) {"Keep it", "Delete", NULL}, NULL, 1);
+                        if (answer == 2) unlink(tgt);
+                        if (delta == 2) {
+                            context->abort = 1;
+                            return OPERATION_ABORT;
+                        }
+                        return OPERATION_SKIP;
+                    }
                 }
 
                 if (strlen(errmsg) > 0) break; // second level break
@@ -337,6 +374,8 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     sprintf(errmsg,"Cannot read data from:\n%s", src);
                     break;
                 }
+
+                int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), total_bytes * 100 / statbufsrc.st_size, context->current_items * 100 / context->total_items, NULL);
 
                 close(src_fd);
                 close(tgt_fd);

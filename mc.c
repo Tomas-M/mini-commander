@@ -158,10 +158,11 @@ int main() {
                 operationContext stats = {0};
                 operationContext context = {0};
                 panel_mass_action(countstats_operation, "", &stats);
-                // if (stats.abort == 1) abort
-                context.total_items = stats.total_items;
-                context.total_size =  stats.total_size;
-                panel_mass_action(copy_operation, prompt, &context);
+                if (stats.abort != 1) {
+                    context.total_items = stats.total_items;
+                    context.total_size =  stats.total_size;
+                    panel_mass_action(copy_operation, prompt, &context);
+                }
             }
             update_files_in_both_panels();
         }
@@ -228,10 +229,11 @@ int main() {
                 operationContext stats = {0};
                 operationContext context = {0};
                 panel_mass_action(countstats_operation, "", &stats);
-                // if (stats.abort == 1) abort
-                context.total_items = stats.total_items;
-                context.total_size =  stats.total_size;
-                panel_mass_action(delete_operation, "", &context);
+                if (stats.abort != 1) {
+                    context.total_items = stats.total_items;
+                    context.total_size =  stats.total_size;
+                    panel_mass_action(delete_operation, "", &context);
+                }
             }
             update_files_in_both_panels();
             redraw_ui();

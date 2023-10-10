@@ -319,6 +319,18 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
                     }
                 }
                 break;
+            case KEY_HOME:
+                if (editing_prompt) {
+                    cursor_position = 0;
+                    prompt_modified = 1;
+                }
+                break;
+            case KEY_END:
+                if (editing_prompt) {
+                    cursor_position = strlen(prompt);
+                    prompt_modified = 1;
+                }
+                break;
             case '\n':
                 if (editing_prompt) {
                     selected = 0;

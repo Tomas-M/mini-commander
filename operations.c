@@ -22,6 +22,7 @@ int panel_mass_action(OperationFunc operation, char *tgt, operationContext *cont
     int err = 0;
     char source_path[CMD_MAX] = {0};
     char target_path[CMD_MAX] = {0};
+    FileNode *unselect_item = NULL;
 
     WINDOW *saved_screen;
     saved_screen = dupwin(newscr);
@@ -29,34 +30,61 @@ int panel_mass_action(OperationFunc operation, char *tgt, operationContext *cont
     create_progress_dialog(1);
 
     if (active_panel->num_selected_files == 0) {
-        sprintf(source_path, "%s/%s", active_panel->path, active_panel->file_under_cursor);
+
+        FileNode *temp = active_panel->files;
+        while (temp != NULL) {
+            if (strcmp(temp->name, active_panel->file_under_cursor) == 0) {
+                temp->is_selected = 1;
+                active_panel->num_selected_files = 1;
+                active_panel->bytes_selected_files = temp->size;
+                unselect_item = temp;
+                break;
+            }
+            temp = temp->next;
+        }
+    }
+
+    int initial_num_selected = active_panel->num_selected_files;
+
+    if (tgt != NULL && strlen(tgt) > 0)
+    {
         if (tgt[0] == '/') { // absolute path
             sprintf(target_path, "%s/%s", tgt, active_panel->file_under_cursor);
         } else { // relative path
             sprintf(target_path, "%s/%s", active_panel->path, tgt);
         }
-//        if (directory_exists(target_path)) {
-//TODO            sprintf("%s/%s", target_path, )
-//        }
-        err = recursive_operation(source_path, target_path, context, operation);
-    } else {
-        FileNode *temp = active_panel->files;
-        while (temp != NULL) {
-            if (temp->is_selected) {
-                context->keep_item_selected = 0;
-                sprintf(source_path, "%s/%s", active_panel->path, temp->name);
-                sprintf(target_path, "%s/%s", tgt, temp->name);
-                err = recursive_operation(source_path, target_path, context, operation);
-                if (context->abort == 1) break;
-                if (err == OPERATION_OK && context->keep_item_selected == 0) {
-                    if (temp->is_selected) {
-                        active_panel->num_selected_files--;
-                    }
-                    temp->is_selected = 0;
+    }
+
+
+    // process selected files
+    FileNode *temp = active_panel->files;
+    while (temp != NULL) {
+        if (temp->is_selected) {
+            context->keep_item_selected = 0;
+            sprintf(source_path, "%s/%s", active_panel->path, temp->name);
+            if (initial_num_selected == 1 && !file_exists(target_path)) {
+                // keep target as is
+            } else {
+                if (strlen(target_path) > 0) { // sanity check
+                    sprintf(target_path, "%s/%s", target_path, temp->name);
                 }
             }
-            temp = temp->next;
+            err = recursive_operation(source_path, target_path, context, operation);
+            if (context->abort == 1) break;
+            if (err == OPERATION_OK && context->keep_item_selected == 0) {
+                if (temp->is_selected) {
+                    active_panel->num_selected_files--;
+                }
+                temp->is_selected = 0;
+            }
         }
+        temp = temp->next;
+    }
+
+    if (unselect_item != NULL) {
+        unselect_item->is_selected = 0;
+        active_panel->num_selected_files = 0;
+        active_panel->bytes_selected_files = 0;
     }
 
     update_progress_dialog_delta(NULL, 0, 0, NULL); // reset internal count of lines, and internal time counter
@@ -493,5 +521,17 @@ int mkdir_recursive(const char *path, mode_t mode) {
     }
 
     return mkdir(tmp, mode) ? errno : 0;
+}
+
+
+int file_exists(const char *path) {
+    struct stat info;
+
+    if (lstat(path, &info) != 0) {
+        // If stat fails, the path does not exist
+        return 0;
+    }
+
+    return 1;
 }
 

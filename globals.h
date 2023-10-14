@@ -32,6 +32,7 @@ void show_shadow(WINDOW *win);
 void dialog_save_screen();
 void dialog_restore_screen();
 void create_progress_dialog(int title_lines);
+int file_exists(const char *path);
 int update_progress_dialog(char *title, int current_progress, int total_progress, char *infotext);
 int update_progress_dialog_delta(char *title, int current_progress, int total_progress, char *infotext);
 int panel_mass_action(OperationFunc func, char *tgt, operationContext *context);

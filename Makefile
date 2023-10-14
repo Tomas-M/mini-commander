@@ -4,7 +4,7 @@ CFLAGS += -lncurses -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BIT
 
 mc: *.c *.h
 	$(CC) mc.c cmd.c operations.c dialog.c filelist.c init.c panel.c ui.c viewer.c progress.c $(CFLAGS) -o mc
-	if which aupx >/dev/null; then upx --lzma --best mc; fi
+	if which upx >/dev/null; then upx --lzma --best mc; fi
 
 .PHONY: clean
 

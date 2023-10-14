@@ -430,6 +430,36 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     break;
                 }
                 buffer[len] = '\0';
+
+                if (target_exists) {
+                    // Ask user if they want to overwrite
+                    btn = 0;
+                    if (context->confirm_all_yes == 1) btn = 1;
+                    if (context->confirm_all_no == 1) btn = 2;
+                    if (btn == 0) {
+                        btn = show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, NULL, 1);
+                    }
+                    if (btn == 3) { // All
+                        context->confirm_all_yes = 1;
+                        btn = 1;
+                    }
+                    if (btn == 1) { // Yes
+                        // Remove the existing target
+                        if (unlink(tgt) == -1) {
+                            sprintf(errmsg, "Failed to remove existing target file\n%s", tgt);
+                            break;
+                        }
+                    } else if (btn == 2 || btn == 0) { // No
+                        return OPERATION_SKIP;
+                    } else if (btn == 4) { // None
+                        context->confirm_all_no = 1;
+                        return OPERATION_SKIP;
+                    } else if (btn == 5) { // abort
+                        context->abort = 1;
+                        return OPERATION_ABORT;
+                    }
+                }
+
                 if (symlink(buffer, tgt) == -1) {
                     sprintf(errmsg,"Failed to create symbolic link\n%s", tgt);
                     break;

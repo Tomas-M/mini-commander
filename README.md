@@ -1,7 +1,7 @@
 # mini-commander
 Mini Commander is very simplified clone of Midnight Commander for Linux.
 
-I would like to all myself an author, but it ain't so easy.
+I would like to call myself an author, but that's not so easy.
 
 The majority of the code, including this text itself, was written by
 ChatGPT. The chatbot is not very smart and often makes weird mistakes. It
@@ -33,3 +33,6 @@ Usage:
 
 Tomas M
 slax.org
+
+![mc](https://github.com/Tomas-M/mini-commander/assets/2259370/3ec02529-7e8d-4d74-9468-01f35b705b0f)
+

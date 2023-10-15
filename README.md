@@ -21,6 +21,11 @@ code it provides in responses is intended for educational and informational
 purposes, and users are free to use it as they see fit. So, the license
 of Mini Commander is GNU GPL v3.
 
+![mc](https://github.com/Tomas-M/mini-commander/assets/2259370/3ec02529-7e8d-4d74-9468-01f35b705b0f)
+
+Tomas M
+slax.org
+
 
 Usage:
 
@@ -30,9 +35,4 @@ Usage:
     # there is no make install
     # copy ./mc to your path if you like
 
-
-Tomas M
-slax.org
-
-![mc](https://github.com/Tomas-M/mini-commander/assets/2259370/3ec02529-7e8d-4d74-9468-01f35b705b0f)
 

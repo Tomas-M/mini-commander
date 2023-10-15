@@ -22,6 +22,7 @@ int panel_mass_action(OperationFunc operation, char *tgt, operationContext *cont
     int err = 0;
     char source_path[CMD_MAX] = {0};
     char target_path[CMD_MAX] = {0};
+    char target[CMD_MAX] = {0};
     FileNode *unselect_item = NULL;
 
     WINDOW *saved_screen;
@@ -31,54 +32,52 @@ int panel_mass_action(OperationFunc operation, char *tgt, operationContext *cont
 
     if (active_panel->num_selected_files == 0) {
 
-        FileNode *temp = active_panel->files;
-        while (temp != NULL) {
-            if (strcmp(temp->name, active_panel->file_under_cursor) == 0) {
-                temp->is_selected = 1;
+        FileNode *current = active_panel->files;
+        while (current != NULL) {
+            if (strcmp(current->name, active_panel->file_under_cursor) == 0) {
+                current->is_selected = 1;
                 active_panel->num_selected_files = 1;
-                active_panel->bytes_selected_files = temp->size;
-                unselect_item = temp;
+                active_panel->bytes_selected_files = current->size;
+                unselect_item = current;
                 break;
             }
-            temp = temp->next;
+            current = current->next;
         }
     }
 
     int initial_num_selected = active_panel->num_selected_files;
 
-    if (tgt != NULL && strlen(tgt) > 0)
-    {
-        if (tgt[0] == '/') { // absolute path
-            sprintf(target_path, "%s/%s", tgt, active_panel->file_under_cursor);
-        } else { // relative path
-            sprintf(target_path, "%s/%s", active_panel->path, tgt);
-        }
-    }
-
-
     // process selected files
-    FileNode *temp = active_panel->files;
-    while (temp != NULL) {
-        if (temp->is_selected) {
+    FileNode *current = active_panel->files;
+    while (current != NULL) {
+        if (current->is_selected) {
             context->keep_item_selected = 0;
-            sprintf(source_path, "%s/%s", active_panel->path, temp->name);
-            if (initial_num_selected == 1 && !file_exists(target_path)) {
-                // keep target as is
-            } else {
-                if (strlen(target_path) > 0) { // sanity check
-                    sprintf(target_path, "%s/%s", target_path, temp->name);
+            sprintf(source_path, "%s/%s", active_panel->path, current->name);
+
+            if (tgt != NULL && strlen(tgt) > 0)
+            {
+                if (tgt[0] == '/') { // absolute path
+                    sprintf(target, "%s", tgt);
+                } else { // relative path
+                    sprintf(target, "%s/%s", active_panel->path, tgt);
+                }
+
+                if (initial_num_selected == 1 && !file_exists(target)) {
+                    sprintf(target_path, "%s", target);
+                } else {
+                    sprintf(target_path, "%s/%s", target, current->name);
                 }
             }
             err = recursive_operation(source_path, target_path, context, operation);
             if (context->abort == 1) break;
             if (err == OPERATION_OK && context->keep_item_selected == 0) {
-                if (temp->is_selected) {
+                if (current->is_selected) {
                     active_panel->num_selected_files--;
                 }
-                temp->is_selected = 0;
+                current->is_selected = 0;
             }
         }
-        temp = temp->next;
+        current = current->next;
     }
 
     if (unselect_item != NULL) {
@@ -186,6 +185,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
     // tgt is ignored for delete operation
     int ret = OPERATION_RETRY;
     int btn = 0;
+    errno = 0;
 
     int delta = update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, context->current_items * 100 / context->total_items, NULL);
     if (delta == 1) {
@@ -500,6 +500,32 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
 
 
 int move_operation(const char *src, const char *tgt, operationContext *context) {
+    int ret = OPERATION_RETRY;
+    errno = 0; // reset
+
+    int delta = update_progress_dialog_delta(SPRINTF("Renaming\n%s\nTo\n%s", src, tgt), 0, context->current_items * 100 / context->total_items, NULL);
+    if (delta == 1) {
+        // ignored here
+    }
+    if (delta == 2) {
+        context->abort = 1;
+        return OPERATION_ABORT;
+    }
+
+    while (ret == OPERATION_RETRY) {
+        int btn = 0;
+        char errmsg[CMD_MAX] = {0};
+
+        ret = rename(src, tgt);
+        if (ret != 0) {
+            if (context->skip_all == 1) return OPERATION_SKIP;
+            btn = show_dialog(SPRINTF("Failed to rename\n%s\nTo\n%s\n%s (%d)", src, tgt, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1);
+            if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
+            if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
+            if (btn == 3) { ret = OPERATION_RETRY; continue; }
+            if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
+        }
+    }
 }
 
 

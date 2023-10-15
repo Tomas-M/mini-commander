@@ -187,7 +187,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
     int btn = 0;
     errno = 0;
 
-    int delta = update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, context->current_items * 100 / context->total_items, NULL);
+    int delta = update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
     if (delta == 1) {
         // ignored
     }
@@ -282,7 +282,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
     int ret = OPERATION_RETRY;
     errno = 0; // reset
 
-    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), 0, context->current_items * 100 / context->total_items, NULL);
+    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
     if (delta == 1) {
         // ignored here
     }
@@ -379,7 +379,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                         break;
                     }
                     total_bytes += bytes;
-                    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), total_bytes * 100 / statbufsrc.st_size, context->current_items * 100 / context->total_items, NULL);
+                    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), statbufsrc.st_size > 0 ? total_bytes * 100 / statbufsrc.st_size : 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
                     if (delta > 0) {
                         close(src_fd);
                         close(tgt_fd);
@@ -403,7 +403,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     break;
                 }
 
-                int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), total_bytes * 100 / statbufsrc.st_size, context->current_items * 100 / context->total_items, NULL);
+                int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), statbufsrc.st_size > 0 ? total_bytes * 100 / statbufsrc.st_size : 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
 
                 close(src_fd);
                 close(tgt_fd);
@@ -503,7 +503,7 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
     int ret = OPERATION_RETRY;
     errno = 0; // reset
 
-    int delta = update_progress_dialog_delta(SPRINTF("Renaming\n%s\nTo\n%s", src, tgt), 0, context->current_items * 100 / context->total_items, NULL);
+    int delta = update_progress_dialog_delta(SPRINTF("Renaming\n%s\nTo\n%s", src, tgt), 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
     if (delta == 1) {
         // ignored here
     }

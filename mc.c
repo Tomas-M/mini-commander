@@ -359,7 +359,7 @@ int main() {
             redraw_ui();
         }
 
-        if (ch == 18) { // Ctrl+R
+        if (ch == 18 || ch == KEY_F(9)) { // Ctrl+R
             update_files_in_both_panels();
         }
 

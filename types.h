@@ -65,6 +65,8 @@ enum Color {
     COLOR_RED_ON_BLUE
 };
 
+#define KEY_ALT_ENTER    0507  /* custom alt-enter key */
+
 typedef struct operationContext {
     off_t current_size;
     off_t current_items;

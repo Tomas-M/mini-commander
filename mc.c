@@ -45,6 +45,8 @@ int noesc(int ch) {
             ch = getch();
         }
 
+        if (ch == 10) return KEY_ALT_ENTER;
+
         while (ch >= '0' && ch <= '9') {  // Read numbers
             num = num * 10 + (ch - '0');
             ch = getch();
@@ -292,6 +294,29 @@ int main() {
                 }
             }
         }
+
+
+        if (ch == KEY_ALT_ENTER) { // Check for Enter key after Alt
+            char *filename = active_panel->file_under_cursor;
+            int filename_len = strlen(filename);
+
+            // Check if there's enough space for the filename and the space character
+            if (cmd_len + filename_len + 1 < CMD_MAX) {
+                // Move the existing command to make space for the filename and space
+                memmove(cmd + cursor_pos + filename_len + 1, cmd + cursor_pos, cmd_len - cursor_pos);
+
+                // Copy the filename to the command buffer
+                memcpy(cmd + cursor_pos, filename, filename_len);
+
+                // Add a space after the filename
+                cmd[cursor_pos + filename_len] = ' ';
+
+                // Update the command length and cursor position
+                cmd_len += filename_len + 1;
+                cursor_pos += filename_len + 1;
+            }
+        }
+
 
         if (ch == '\n')
         {

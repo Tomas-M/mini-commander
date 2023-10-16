@@ -128,21 +128,25 @@ int main() {
             // After these problems are resolved, we can get bytes and update current->size accordingly.
         }
 
-        if (ch == KEY_F(3)) {
+        if (ch == KEY_F(3)) { // F3
             if (current) {
                 if (current->is_dir) {
                     dive_into_directory(current);
                 } else {
                     char file[CMD_MAX] = {};
                     sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
-                    view_file(file);
+                    view_file(file,0);
                     redraw_ui();
                 }
             }
         }
 
+
         if (ch == KEY_F(4)) { // F4
-            // TODO edit file
+            char file[CMD_MAX] = {};
+            sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
+            view_file(file,1);
+            redraw_ui();
             update_files_in_both_panels();
         }
 

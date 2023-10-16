@@ -113,7 +113,7 @@ void free_file_lines(file_lines *head) {
     }
 }
 
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col) {
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode) {
     char *ptr = line->line;
     int offset = 0;
     while (offset < line->line_length && offset < current_col) {
@@ -138,11 +138,14 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col) {
 }
 
 
-int view_file(char *filename) {
+int view_file(char *filename, int editor_mode) {
     int input;
     int max_y, max_x;
-    int current_line = 0;
-    int current_col = 0; // Add a variable to keep track of the current column offset
+    int screen_start_line = 0;
+    int screen_start_col = 0; // Add a variable to keep track of the current column offset
+    int cursor_row = 0;
+    int cursor_col = 0;
+    int skip_refresh = 0;
 
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);
@@ -168,17 +171,16 @@ int view_file(char *filename) {
     file_lines *current = lines;
     for (int i = 0; i < max_y - 2 && current != NULL; i++) {
         wmove(content_win, i, 0);
-        display_line(content_win, current, max_x, current_col); // Pass current_col to display_line
+        display_line(content_win, current, max_x, screen_start_col, editor_mode); // Pass screen_start_col to display_line
         current = current->next;
     }
 
     current = lines;
-    curs_set(0);
 
     // Handle user input for scrolling
     while(1) {
 
-        int shown_line_max = current_line + max_y - 2;
+        int shown_line_max = screen_start_line + max_y - 2;
         if (shown_line_max > num_lines) shown_line_max = num_lines;
 
         // Initial top row stats
@@ -186,6 +188,15 @@ int view_file(char *filename) {
         int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
         mvwprintw(toprow_win, 0, max_x - num_width, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
         wrefresh(toprow_win);
+
+        if (editor_mode) {
+            curs_set(1); // Make cursor visible
+        } else {
+            curs_set(0); // Hide cursor
+        }
+
+        move(cursor_row + 1, cursor_col);
+        skip_refresh = 0;
 
         input = noesc(getch());
         switch (input) {
@@ -197,39 +208,76 @@ int view_file(char *filename) {
                 curs_set(1);
                 return 0;
             case KEY_UP:
-                if (current_line > 0) {
-                    current_line--;
+                if (editor_mode && cursor_row > 0) {
+                    cursor_row--;
+                    skip_refresh = 1;
+                } else {
+                    if (screen_start_line > 0) {
+                        screen_start_line--;
+                    }
                 }
                 break;
             case KEY_DOWN:
-                if (current_line < num_lines - (max_y - 2)) {
-                    current_line++;
+                if (editor_mode && cursor_row < LINES - 3) {
+                    cursor_row++;
+                    skip_refresh = 1;
+                } else {
+                    if (screen_start_line < num_lines - (max_y - 2)) {
+                        screen_start_line++;
+                    }
                 }
                 break;
             case KEY_LEFT:
-                if (current_col >= 10) {
-                    current_col-=10;
+                if (editor_mode) {
+                    if (cursor_col > 0) {
+                        cursor_col--;
+                        skip_refresh = 1;
+                    } else {
+                        screen_start_col-=1;
+                    }
+                } else {
+                    if (screen_start_col >= 10) {
+                        screen_start_col-=10;
+                    }
                 }
                 break;
             case KEY_RIGHT:
-                current_col+=10;
+                if (editor_mode) {
+                    if (cursor_col < max_x - 1) {
+                        cursor_col++;
+                        skip_refresh = 1;
+                    } else {
+                        screen_start_col+=1;
+                    }
+                } else {
+                    screen_start_col+=10;
+                }
                 break;
             case KEY_PPAGE: // PgUp
-                current_line -= max_y - 2;
-                if (current_line < 0) current_line = 0;
+                screen_start_line -= max_y - 2;
+                if (screen_start_line < 0) screen_start_line = 0;
                 break;
             case KEY_NPAGE: // PgDn
-                current_line += max_y - 2;
-                if (current_line > num_lines - (max_y - 2)) {
-                    current_line = num_lines - (max_y - 2);
+                screen_start_line += max_y - 2;
+                if (screen_start_line > num_lines - (max_y - 2)) {
+                    screen_start_line = num_lines - (max_y - 2);
                 }
                 break;
             case KEY_HOME: // Handle Home key
-                current_line = 0;
+                if (editor_mode) {
+                    cursor_col = 0;
+                    screen_start_col = 0;
+                } else {
+                    screen_start_line = 0;
+                }
                 break;
             case KEY_END: // Handle End key
-                current_line = num_lines - (max_y - 2);
-                if (current_line < 0) current_line = 0;
+                if (editor_mode) {
+                    // TODO
+                } else {
+                    screen_start_line = num_lines - (max_y - 2);
+                    if (screen_start_line < 0) screen_start_line = 0;
+                }
                 break;
             case KEY_RESIZE: // Handle screen resize
                 getmaxyx(stdscr, max_y, max_x); // Update max_y and max_x
@@ -242,19 +290,55 @@ int view_file(char *filename) {
                 break;
         }
 
-        // Update the current pointer based on current_line
-        current = lines;
-        for (int i = 0; i < current_line; i++) {
-            current = current->next;
+
+        if (editor_mode && isprint(input)) {
+            // Insert the character at the cursor position
+            file_lines *current_line = lines;
+            for (int i = 0; i < screen_start_line + cursor_row; i++) {
+                current_line = current_line->next;
+            }
+
+            // Reallocate memory for the new character
+            char *new_line = realloc(current_line->line, current_line->line_length + 1);
+            if (new_line) {
+                current_line->line = new_line;
+                memmove(&current_line->line[cursor_col + 1], &current_line->line[cursor_col], current_line->line_length - cursor_col);
+                current_line->line[cursor_col] = input;
+                current_line->line_length++;
+
+                // Move the cursor to the right after inserting the character
+                if (cursor_col < max_x - 1) {
+                    cursor_col++;
+                } else {
+                    screen_start_col++;
+                }
+            } else {
+                // Handle memory allocation failure
+            }
         }
 
-        // Redisplay the window content
-        file_lines *temp = current;
-        for (int i = 0; i < max_y - 2 && temp != NULL; i++) {
-            wmove(content_win, i, 0);
-            wclrtoeol(content_win);
-            display_line(content_win, temp, max_x, current_col); // Pass current_col to display_line
-            temp = temp->next;
+        if (!skip_refresh) {
+            curs_set(0); // Hide cursor
+
+            // Update the current pointer based on screen_start_line
+            current = lines;
+            for (int i = 0; i < screen_start_line; i++) {
+                current = current->next;
+            }
+
+            // Redisplay the window content
+            file_lines *temp = current;
+            for (int i = 0; i < max_y - 2 && temp != NULL; i++) {
+                wmove(content_win, i, 0);
+                wclrtoeol(content_win);
+                display_line(content_win, temp, max_x, screen_start_col, editor_mode);
+                temp = temp->next;
+            }
+        }
+
+
+        if (editor_mode) {
+            wmove(content_win, cursor_row, cursor_col);
         }
     }
 

@@ -233,7 +233,7 @@ int view_file(char *filename, int editor_mode) {
                         cursor_col--;
                         skip_refresh = 1;
                     } else {
-                        screen_start_col-=1;
+                        if (screen_start_col > 0) screen_start_col -=1;
                     }
                 } else {
                     if (screen_start_col >= 10) {
@@ -253,16 +253,19 @@ int view_file(char *filename, int editor_mode) {
                     screen_start_col+=10;
                 }
                 break;
+
             case KEY_PPAGE: // PgUp
                 screen_start_line -= max_y - 2;
                 if (screen_start_line < 0) screen_start_line = 0;
                 break;
+
             case KEY_NPAGE: // PgDn
                 screen_start_line += max_y - 2;
                 if (screen_start_line > num_lines - (max_y - 2)) {
                     screen_start_line = num_lines - (max_y - 2);
                 }
                 break;
+
             case KEY_HOME: // Handle Home key
                 if (editor_mode) {
                     cursor_col = 0;
@@ -271,6 +274,7 @@ int view_file(char *filename, int editor_mode) {
                     screen_start_line = 0;
                 }
                 break;
+
             case KEY_END: // Handle End key
                 if (editor_mode) {
                     // TODO
@@ -279,6 +283,7 @@ int view_file(char *filename, int editor_mode) {
                     if (screen_start_line < 0) screen_start_line = 0;
                 }
                 break;
+
             case KEY_RESIZE: // Handle screen resize
                 getmaxyx(stdscr, max_y, max_x); // Update max_y and max_x
                 wclear(content_win); // Clear the old window
@@ -288,6 +293,140 @@ int view_file(char *filename, int editor_mode) {
                 wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
                 wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
                 break;
+
+            case '\n': // Enter key
+            {
+                file_lines *current_line = lines;
+                for (int i = 0; i < screen_start_line + cursor_row; i++) {
+                    current_line = current_line->next;
+                }
+
+                int absolute_cursor_col = cursor_col + screen_start_col;
+
+                // Split the current line into two at the cursor's position
+                char *first_half = malloc(absolute_cursor_col + 1);
+                char *second_half = malloc(current_line->line_length - absolute_cursor_col + 1);
+
+                memcpy(first_half, current_line->line, absolute_cursor_col);
+                first_half[absolute_cursor_col] = '\0';
+
+                memcpy(second_half, &current_line->line[absolute_cursor_col], current_line->line_length - absolute_cursor_col);
+                second_half[current_line->line_length - absolute_cursor_col] = '\0';
+
+                // Free the original line memory
+                free(current_line->line);
+
+                // Adjust the linked list to accommodate the new line
+                file_lines *new_line = malloc(sizeof(file_lines));
+                new_line->line = second_half;
+                new_line->line_length = current_line->line_length - absolute_cursor_col;
+                new_line->next = current_line->next;
+
+                current_line->next = new_line;
+                current_line->line = first_half;
+                current_line->line_length = absolute_cursor_col;
+
+                num_lines++;
+
+                // Move the cursor to the beginning of the next line
+                if (cursor_row < max_y - 3) {
+                    cursor_row++;
+                    cursor_col = 0;
+                    screen_start_col = 0; // Reset horizontal scrolling when moving to a new line
+                } else {
+                    screen_start_line++;
+                    cursor_col = 0;
+                    screen_start_col = 0; // Reset horizontal scrolling when moving to a new line
+                }
+            }
+            break;
+
+
+            case KEY_BACKSPACE: // Handle Backspace key
+            {
+                file_lines *current_line = lines;
+                for (int i = 0; i < screen_start_line + cursor_row; i++) {
+                    current_line = current_line->next;
+                }
+
+                int absolute_cursor_col = cursor_col + screen_start_col;
+
+                if (absolute_cursor_col > 0) {
+                    // Remove the character to the left of the cursor
+                    memmove(&current_line->line[absolute_cursor_col - 1], &current_line->line[absolute_cursor_col], current_line->line_length - absolute_cursor_col);
+                    current_line->line_length--;
+                    char *new_line = realloc(current_line->line, current_line->line_length);
+                    current_line->line = new_line;
+
+                    // Move the cursor to the left
+                    if (cursor_col > 0) {
+                        cursor_col--;
+                    } else {
+                        screen_start_col--;
+                    }
+                } else if (cursor_row > 0) {
+                    // Merge the current line with the previous line
+                    file_lines *prev_line = lines;
+                    for (int i = 0; i < screen_start_line + cursor_row - 1; i++) {
+                        prev_line = prev_line->next;
+                    }
+
+                    int original_prev_line_length = prev_line->line_length; // Store the original length before the merge
+
+                    int new_length = prev_line->line_length + current_line->line_length;
+                    char *merged_line = realloc(prev_line->line, new_length);
+                    memcpy(&merged_line[prev_line->line_length], current_line->line, current_line->line_length);
+                    prev_line->line = merged_line;
+                    prev_line->line_length = new_length;
+                    prev_line->next = current_line->next;
+                    free(current_line->line);
+                    free(current_line);
+                    num_lines--;
+
+                    cursor_row--;
+                    cursor_col = original_prev_line_length - screen_start_col;
+                }
+            }
+            break;
+
+            case KEY_DC: // Handle Delete key
+            {
+                file_lines *current_line = lines;
+                for (int i = 0; i < screen_start_line + cursor_row; i++) {
+                    current_line = current_line->next;
+                }
+
+                int absolute_cursor_col = cursor_col + screen_start_col;
+
+                if (absolute_cursor_col < current_line->line_length) {
+                    // Remove the character at the cursor position
+                    memmove(&current_line->line[absolute_cursor_col], &current_line->line[absolute_cursor_col + 1], current_line->line_length - absolute_cursor_col - 1);
+                    current_line->line_length--;
+                    char *new_line = realloc(current_line->line, current_line->line_length);
+                    if (new_line) {
+                        current_line->line = new_line;
+                    } else {
+                        // Handle memory allocation failure
+                    }
+                } else if (current_line->next) {
+                    // Merge the current line with the next line
+                    int new_length = current_line->line_length + current_line->next->line_length;
+                    char *merged_line = realloc(current_line->line, new_length);
+                    if (merged_line) {
+                        memcpy(&merged_line[current_line->line_length], current_line->next->line, current_line->next->line_length);
+                        current_line->line = merged_line;
+                        current_line->line_length = new_length;
+                        file_lines *temp = current_line->next;
+                        current_line->next = temp->next;
+                        free(temp->line);
+                        free(temp);
+                        num_lines--;
+                    } else {
+                        // Handle memory allocation failure
+                    }
+                }
+            }
+            break;
         }
 
 

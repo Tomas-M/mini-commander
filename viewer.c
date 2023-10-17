@@ -198,6 +198,12 @@ int view_file(char *filename, int editor_mode) {
         move(cursor_row + 1, cursor_col);
         skip_refresh = 0;
 
+        // globally get current line, since it may be used on many places later
+        file_lines *current_line = lines;
+        for (int i = 0; i < screen_start_line + cursor_row; i++) {
+            current_line = current_line->next;
+        }
+
         input = noesc(getch());
         switch (input) {
             case KEY_F(10):
@@ -277,7 +283,7 @@ int view_file(char *filename, int editor_mode) {
 
             case KEY_END: // Handle End key
                 if (editor_mode) {
-                    // TODO
+                    cursor_col = current_line->line_length;
                 } else {
                     screen_start_line = num_lines - (max_y - 2);
                     if (screen_start_line < 0) screen_start_line = 0;
@@ -296,10 +302,6 @@ int view_file(char *filename, int editor_mode) {
 
             case '\n': // Enter key
             {
-                file_lines *current_line = lines;
-                for (int i = 0; i < screen_start_line + cursor_row; i++) {
-                    current_line = current_line->next;
-                }
 
                 int absolute_cursor_col = cursor_col + screen_start_col;
 
@@ -344,11 +346,6 @@ int view_file(char *filename, int editor_mode) {
 
             case KEY_BACKSPACE: // Handle Backspace key
             {
-                file_lines *current_line = lines;
-                for (int i = 0; i < screen_start_line + cursor_row; i++) {
-                    current_line = current_line->next;
-                }
-
                 int absolute_cursor_col = cursor_col + screen_start_col;
 
                 if (absolute_cursor_col > 0) {
@@ -381,6 +378,7 @@ int view_file(char *filename, int editor_mode) {
                     prev_line->next = current_line->next;
                     free(current_line->line);
                     free(current_line);
+                    current_line = prev_line;
                     num_lines--;
 
                     cursor_row--;
@@ -391,11 +389,6 @@ int view_file(char *filename, int editor_mode) {
 
             case KEY_DC: // Handle Delete key
             {
-                file_lines *current_line = lines;
-                for (int i = 0; i < screen_start_line + cursor_row; i++) {
-                    current_line = current_line->next;
-                }
-
                 int absolute_cursor_col = cursor_col + screen_start_col;
 
                 if (absolute_cursor_col < current_line->line_length) {
@@ -403,56 +396,66 @@ int view_file(char *filename, int editor_mode) {
                     memmove(&current_line->line[absolute_cursor_col], &current_line->line[absolute_cursor_col + 1], current_line->line_length - absolute_cursor_col - 1);
                     current_line->line_length--;
                     char *new_line = realloc(current_line->line, current_line->line_length);
-                    if (new_line) {
-                        current_line->line = new_line;
-                    } else {
-                        // Handle memory allocation failure
-                    }
+                    current_line->line = new_line;
                 } else if (current_line->next) {
                     // Merge the current line with the next line
                     int new_length = current_line->line_length + current_line->next->line_length;
                     char *merged_line = realloc(current_line->line, new_length);
-                    if (merged_line) {
-                        memcpy(&merged_line[current_line->line_length], current_line->next->line, current_line->next->line_length);
-                        current_line->line = merged_line;
-                        current_line->line_length = new_length;
-                        file_lines *temp = current_line->next;
-                        current_line->next = temp->next;
-                        free(temp->line);
-                        free(temp);
-                        num_lines--;
-                    } else {
-                        // Handle memory allocation failure
-                    }
+                    memcpy(&merged_line[current_line->line_length], current_line->next->line, current_line->next->line_length);
+                    current_line->line = merged_line;
+                    current_line->line_length = new_length;
+                    file_lines *temp = current_line->next;
+                    current_line->next = temp->next;
+                    free(temp->line);
+                    free(temp);
+                    num_lines--;
                 }
             }
             break;
         }
 
 
+        // insert character where it belongs
         if (editor_mode && isprint(input)) {
-            // Insert the character at the cursor position
+            // Reallocate memory for the new character
+            char *new_line = realloc(current_line->line, current_line->line_length + 1);
+            current_line->line = new_line;
+            memmove(&current_line->line[cursor_col + 1], &current_line->line[cursor_col], current_line->line_length - cursor_col);
+            current_line->line[cursor_col] = input;
+            current_line->line_length++;
+
+            // Move the cursor to the right after inserting the character
+            if (cursor_col < max_x - 1) {
+                cursor_col++;
+            } else {
+                screen_start_col++;
+            }
+        }
+
+
+        if (editor_mode) {
+
+
+            // re-get current line, since it may have changed
             file_lines *current_line = lines;
             for (int i = 0; i < screen_start_line + cursor_row; i++) {
                 current_line = current_line->next;
             }
 
-            // Reallocate memory for the new character
-            char *new_line = realloc(current_line->line, current_line->line_length + 1);
-            if (new_line) {
-                current_line->line = new_line;
-                memmove(&current_line->line[cursor_col + 1], &current_line->line[cursor_col], current_line->line_length - cursor_col);
-                current_line->line[cursor_col] = input;
-                current_line->line_length++;
+            int absolute_cursor_col = cursor_col + screen_start_col;
 
-                // Move the cursor to the right after inserting the character
-                if (cursor_col < max_x - 1) {
-                    cursor_col++;
-                } else {
-                    screen_start_col++;
-                }
-            } else {
-                // Handle memory allocation failure
+            int visual_adjustment = 0;
+            if (current_line->line_length > 1 &&
+                current_line->line[current_line->line_length - 2] == '\r' &&
+                current_line->line[current_line->line_length - 1] == '\n') {
+                visual_adjustment = 2;
+            } else if (current_line->line_length > 0 &&
+                       current_line->line[current_line->line_length - 1] == '\n') {
+                visual_adjustment = 1;
+            }
+
+            if (absolute_cursor_col > current_line->line_length - visual_adjustment) {
+                cursor_col = current_line->line_length - visual_adjustment;
             }
         }
 

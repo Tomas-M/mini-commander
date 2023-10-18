@@ -1,4 +1,5 @@
 #include <ncurses.h>
+#include <getopt.h>
 #include <string.h>
 #include <unistd.h>
 #include <pwd.h>
@@ -36,6 +37,8 @@ int prompt_length = 0;
 
 char cmd[CMD_MAX] = {0};
 int cmd_len = 0;
+
+int color_enabled = 1;
 
 int noesc(int ch) {
     int num = 0;
@@ -79,7 +82,31 @@ int noesc(int ch) {
 }
 
 
-int main() {
+int main(int argc, char *argv[]) {
+
+    // Define the long options
+    static struct option long_options[] = {
+        {"nocolor", no_argument, 0, 'b'},
+        {"help", no_argument, 0, 'h'},
+        {0, 0, 0, 0}
+    };
+
+    int opt;
+    int option_index = 0;
+
+    // parse commandline arguments
+    while ((opt = getopt_long(argc, argv, "b", long_options, &option_index)) != -1) {
+        switch (opt) {
+            case 'b':
+                color_enabled = 0;
+                break;
+            case 'h':
+                fprintf(stderr, "Usage: %s [-b|--nocolor] [-h|--help]\n", argv[0]);
+                return 1;
+                break;
+        }
+    }
+
 
     getcwd(left_panel.path, sizeof(left_panel.path));
     strcpy(right_panel.path,"/root");

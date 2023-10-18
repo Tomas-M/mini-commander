@@ -1,5 +1,6 @@
 
 #define CMD_MAX 16384
+#define KEY_ALT_ENTER    0507  /* custom alt-enter key */
 
 typedef enum {
     SORT_BY_NAME_ASC = 0,
@@ -65,7 +66,6 @@ enum Color {
     COLOR_RED_ON_BLUE
 };
 
-#define KEY_ALT_ENTER    0507  /* custom alt-enter key */
 
 typedef struct operationContext {
     off_t current_size;
@@ -116,3 +116,5 @@ extern int prompt_length;
 
 extern char cmd[CMD_MAX];
 extern int cmd_len;
+
+extern int color_enabled;

@@ -1,3 +1,7 @@
+// this is long line with comments  .dfc ropigop rkrpok erpogk reopg k regopker gpork pogk popo kvopdfkv odkpokrepo fkerpogk ergpoerk goperk gpeor gkeropgk erop gkj
+// this is long line with comments  .dfc ropigop rkrpok erpogk reopg k regopker gpork pogk popo kvopdfkv odkpokrepo fkerpogk ergpoerk goperk gpeor gkeropgk erop gkj
+// this is long line with comments  .dfc ropigop rkrpok erpogk reopg k regopker gpork pogk popo kvopdfkv odkpokrepo fkerpogk ergpoerk goperk gpeor gkeropgk erop gkj
+// this is long line with comments  .dfc ropigop rkrpok erpogk reopg k regopker gpork pogk popo kvopdfkv odkpokrepo fkerpogk ergpoerk goperk gpeor gkeropgk erop gkj
 #include <ncurses.h>
 #include <string.h>
 #include <unistd.h>
@@ -233,46 +237,76 @@ int view_file(char *filename, int editor_mode) {
                     }
                 }
                 break;
-            case KEY_LEFT:
-                if (editor_mode) {
-                    if (cursor_col > 0) {
-                        cursor_col--;
-                        skip_refresh = 1;
-                    } else if (cursor_row > 0) {
-                        cursor_row--;
-                        file_lines *prev_line = lines;
-                        for (int i = 0; i < screen_start_line + cursor_row; i++) {
-                            prev_line = prev_line->next;
-                        }
-                        cursor_col = prev_line->line_length - 1;
-                        if (cursor_col < 0) cursor_col = 0;
-                        skip_refresh = 1;
-                    } else {
-                        if (screen_start_col > 0) screen_start_col -= 1;
-                    }
-                } else {
-                    if (screen_start_col >= 10) {
-                        screen_start_col -= 10;
-                    }
-                }
-                break;
-            case KEY_RIGHT:
-                if (editor_mode) {
-                    int absolute_cursor_col = cursor_col + screen_start_col;
-                    if (absolute_cursor_col < current_line->line_length - 1) {
-                        cursor_col++;
-                        skip_refresh = 1;
-                    } else if (current_line->next) {
-                        cursor_row++;
-                        cursor_col = 0;
-                        skip_refresh = 1;
-                    } else {
-                        screen_start_col += 1;
-                    }
-                } else {
-                    screen_start_col += 10;
-                }
-                break;
+case KEY_LEFT:
+    if (editor_mode) {
+        if (cursor_col > 0) {
+            cursor_col--;
+            skip_refresh = 1;
+        } else if (screen_start_col > 0) {
+            screen_start_col--;
+        } else if (cursor_row > 0) {
+            cursor_row--;
+            file_lines *prev_line = lines;
+            for (int i = 0; i < screen_start_line + cursor_row; i++) {
+                prev_line = prev_line->next;
+            }
+            cursor_col = prev_line->line_length;
+            if (prev_line->line[prev_line->line_length - 1] == '\n') cursor_col--;
+            if (cursor_col < 0) cursor_col = 0;
+            if (cursor_col >= max_x) {
+                screen_start_col = cursor_col - max_x + 1;
+                cursor_col = max_x - 1;
+            } else {
+                screen_start_col = 0;
+            }
+        } else if (screen_start_line > 0) {
+            screen_start_line--;
+            file_lines *prev_line = lines;
+            for (int i = 0; i < screen_start_line; i++) {
+                prev_line = prev_line->next;
+            }
+            cursor_col = prev_line->line_length;
+            if (prev_line->line[prev_line->line_length - 1] == '\n') cursor_col--;
+            if (cursor_col < 0) cursor_col = 0;
+            if (cursor_col >= max_x) {
+                screen_start_col = cursor_col - max_x + 1;
+                cursor_col = max_x - 1;
+            } else {
+                screen_start_col = 0;
+            }
+        }
+
+    } else {
+        if (screen_start_col > 0) screen_start_col -= 10;
+        if (screen_start_col < 0) screen_start_col = 0;
+    }
+    break;
+
+
+case KEY_RIGHT:
+    if (editor_mode) {
+        int absolute_cursor_col = cursor_col + screen_start_col;
+        if (absolute_cursor_col < current_line->line_length - 1) {
+            if (cursor_col < max_x - 1) {
+                cursor_col++;
+            } else {
+                screen_start_col++;
+            }
+        } else if (current_line->next) {
+            cursor_col = 0;
+            if (cursor_row < max_y - 3) {
+                cursor_row++;
+            } else {
+                screen_start_line++;
+            }
+            screen_start_col = 0; // Reset horizontal scrolling when moving to a new line
+        }
+    } else {
+        screen_start_col += 10;
+    }
+    break;
+
+
             case KEY_PPAGE: // PgUp
                 screen_start_line -= max_y - 2;
                 if (screen_start_line < 0) screen_start_line = 0;

@@ -67,6 +67,9 @@ int noesc(int ch) {
                 case 4:
                     ch = KEY_END;
                     break;
+                case 12:
+                    ch = KEY_F(2);
+                    break;
                 case 13:
                     ch = KEY_F(3);
                     break;
@@ -154,6 +157,30 @@ int main(int argc, char *argv[]) {
             // TODO: on directory item, use panel_mass_action with stats_operation to get total used bytes by given directory.
             // Problem is panel_mass_action does not return context yet, and does update panel files which we do not want.
             // After these problems are resolved, we can get bytes and update current->size accordingly.
+        }
+
+        if (ch == KEY_F(2)) { // F2
+            int sort1 = show_dialog("Sort files and directories by:", (char *[]) {"Name", "Size", "Last Modify Time", NULL}, NULL, 0);
+            int sort2 = show_dialog("Sort order:", (char *[]) {"A-Z, dirs first", "A-Z, dirs mix", "Z-A, dirs first", "Z-A, dirs mix", NULL}, NULL, 0);
+            if (sort1 == 1) {
+                if (sort2 == 1) active_panel->sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
+                if (sort2 == 2) active_panel->sort_order = SORT_BY_NAME_ASC;
+                if (sort2 == 3) active_panel->sort_order = SORT_BY_NAME_DIRSFIRST_DESC;
+                if (sort2 == 4) active_panel->sort_order = SORT_BY_NAME_DESC;
+            }
+            if (sort1 == 2) {
+                if (sort2 == 1) active_panel->sort_order = SORT_BY_SIZE_DIRSFIRST_ASC;
+                if (sort2 == 2) active_panel->sort_order = SORT_BY_SIZE_ASC;
+                if (sort2 == 3) active_panel->sort_order = SORT_BY_SIZE_DIRSFIRST_DESC;
+                if (sort2 == 4) active_panel->sort_order = SORT_BY_SIZE_DESC;
+            }
+            if (sort1 == 3) {
+                if (sort2 == 1) active_panel->sort_order = SORT_BY_TIME_DIRSFIRST_ASC;
+                if (sort2 == 2) active_panel->sort_order = SORT_BY_TIME_ASC;
+                if (sort2 == 3) active_panel->sort_order = SORT_BY_TIME_DIRSFIRST_DESC;
+                if (sort2 == 4) active_panel->sort_order = SORT_BY_TIME_DESC;
+            }
+            update_files_in_both_panels();
         }
 
         if (ch == KEY_F(3)) { // F3

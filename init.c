@@ -47,7 +47,6 @@ void init_screen() {
     if (color_enabled) {
         init_pair(COLOR_WHITE_ON_BLACK, COLOR_WHITE, COLOR_BLACK);
         init_pair(COLOR_BLACK_ON_WHITE, COLOR_BLACK, COLOR_WHITE);
-
         init_pair(COLOR_WHITE_ON_RED, COLOR_WHITE, COLOR_RED);
         init_pair(COLOR_WHITE_ON_BLUE, COLOR_WHITE, COLOR_BLUE);
         init_pair(COLOR_YELLOW_ON_BLUE, COLOR_YELLOW, COLOR_BLUE);
@@ -57,10 +56,11 @@ void init_screen() {
         init_pair(COLOR_CYAN_ON_BLUE, COLOR_CYAN, COLOR_BLUE);
         init_pair(COLOR_YELLOW_ON_CYAN, COLOR_YELLOW, COLOR_CYAN);
         init_pair(COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_CYAN);
+        init_pair(COLOR_BLACK_ON_CYAN_BTN, COLOR_BLACK, COLOR_CYAN);
+        init_pair(COLOR_BLACK_ON_CYAN_PMPT, COLOR_BLACK, COLOR_CYAN);
     } else { // black and white mode
         init_pair(COLOR_WHITE_ON_BLACK, COLOR_WHITE, COLOR_BLACK);
         init_pair(COLOR_BLACK_ON_WHITE, COLOR_BLACK, COLOR_WHITE);
-
         init_pair(COLOR_WHITE_ON_RED, COLOR_WHITE, COLOR_BLACK);
         init_pair(COLOR_WHITE_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
         init_pair(COLOR_YELLOW_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
@@ -70,6 +70,8 @@ void init_screen() {
         init_pair(COLOR_CYAN_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
         init_pair(COLOR_YELLOW_ON_CYAN, COLOR_WHITE, COLOR_BLACK);
         init_pair(COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_WHITE);
+        init_pair(COLOR_BLACK_ON_CYAN_BTN, COLOR_WHITE, COLOR_BLACK);
+        init_pair(COLOR_BLACK_ON_CYAN_PMPT, COLOR_WHITE, COLOR_BLACK);
     }
 }
 

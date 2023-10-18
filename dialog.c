@@ -159,7 +159,7 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
                 wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
                 wattroff(win, A_BOLD);
             } else {
-                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_BTN));
             }
             move_cursor_pos = cursor_pos + 2;
         }
@@ -230,7 +230,7 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger) {
             } else if (cursor_position < prompt_offset) {
                 prompt_offset = cursor_position;
             }
-            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+            wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_PMPT));
             if (!prompt_modified) wattron(win, A_BOLD);
             mvwprintw(win, 2 + lines(title), 3, "%-*.*s", max_prompt_display, max_prompt_display, prompt + prompt_offset);
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));

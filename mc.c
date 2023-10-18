@@ -154,9 +154,13 @@ int main(int argc, char *argv[]) {
         int ch = noesc(getch());
 
         if (ch == 0) { // Ctrl+Space
-            // TODO: on directory item, use panel_mass_action with stats_operation to get total used bytes by given directory.
-            // Problem is panel_mass_action does not return context yet, and does update panel files which we do not want.
-            // After these problems are resolved, we can get bytes and update current->size accordingly.
+            // TODO: fix when files are selected
+            // TODO: fix when cursor is at ..
+            operationContext stats = {0};
+            panel_mass_action(countstats_operation, "", &stats);
+            if (stats.abort != 1) {
+                current->size = stats.total_size;
+            }
         }
 
         if (ch == KEY_F(2)) { // F2

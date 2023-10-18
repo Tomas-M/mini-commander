@@ -49,6 +49,7 @@ int noesc(int ch) {
         }
 
         if (ch == 10) return KEY_ALT_ENTER;
+        if (ch == 'a') return KEY_ALT_a;
 
         while (ch >= '0' && ch <= '9') {  // Read numbers
             num = num * 10 + (ch - '0');
@@ -345,6 +346,28 @@ int main(int argc, char *argv[]) {
                 // Update the command length and cursor position
                 cmd_len += filename_len + 1;
                 cursor_pos += filename_len + 1;
+            }
+        }
+
+
+        if (ch == KEY_ALT_a) {
+            char *path = active_panel->path;
+            int path_len = strlen(path);
+
+            // Check if there's enough space for the path and the / character
+            if (cmd_len + path_len + 1 < CMD_MAX) {
+                // Move the existing command to make space for the path and /
+                memmove(cmd + cursor_pos + path_len + 1, cmd + cursor_pos, cmd_len - cursor_pos);
+
+                // Copy the path to the command buffer
+                memcpy(cmd + cursor_pos, path, path_len);
+
+                // Add a / after the path
+                cmd[cursor_pos + path_len] = '/';
+
+                // Update the command length and cursor position
+                cmd_len += path_len + 1;
+                cursor_pos += path_len + 1;
             }
         }
 

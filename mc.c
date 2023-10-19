@@ -164,31 +164,21 @@ int main(int argc, char *argv[]) {
         }
 
         if (ch == KEY_F(2)) { // F2
-            int sort1 = show_dialog("Sort files and directories by:", (char *[]) {"Name", "Size", "Last Modify Time", NULL}, NULL, 0);
-            if (sort1 != -1) {
-                int sort2 = show_dialog("Sort order:", (char *[]) {"A-Z, dirs first", "A-Z, dirs mix", "Z-A, dirs first", "Z-A, dirs mix", NULL}, NULL, 0);
-                if (sort2 != -1) {
-                    if (sort1 == 1) {
-                        if (sort2 == 1) active_panel->sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
-                        if (sort2 == 2) active_panel->sort_order = SORT_BY_NAME_ASC;
-                        if (sort2 == 3) active_panel->sort_order = SORT_BY_NAME_DIRSFIRST_DESC;
-                        if (sort2 == 4) active_panel->sort_order = SORT_BY_NAME_DESC;
-                    }
-                    if (sort1 == 2) {
-                        if (sort2 == 1) active_panel->sort_order = SORT_BY_SIZE_DIRSFIRST_ASC;
-                        if (sort2 == 2) active_panel->sort_order = SORT_BY_SIZE_ASC;
-                        if (sort2 == 3) active_panel->sort_order = SORT_BY_SIZE_DIRSFIRST_DESC;
-                        if (sort2 == 4) active_panel->sort_order = SORT_BY_SIZE_DESC;
-                    }
-                    if (sort1 == 3) {
-                        if (sort2 == 1) active_panel->sort_order = SORT_BY_TIME_DIRSFIRST_ASC;
-                        if (sort2 == 2) active_panel->sort_order = SORT_BY_TIME_ASC;
-                        if (sort2 == 3) active_panel->sort_order = SORT_BY_TIME_DIRSFIRST_DESC;
-                        if (sort2 == 4) active_panel->sort_order = SORT_BY_TIME_DESC;
-                    }
-                    update_files_in_both_panels();
-                }
-            }
+            int sort = show_dialog("Sort files and directories by:", (char *[]) {
+            "Sort by name, from a to z, dirs first",
+            "Sort by size, from small to big, dirs first",
+            "Sort by modify time, from old to new, dirs first",
+            "Sort by name, from z to a, dirs first",
+            "Sort by size, from big to small, dirs first",
+            "Sort by modify time, from new to old, dirs first",
+            "Sort by name, from a to z",
+            "Sort by size, from small to big",
+            "Sort by modify time, from old to new",
+            "Sort by name, from z to a",
+            "Sort by size, from big to small",
+            "Sort by modify time, from new to old", NULL}, NULL, 0, 1);
+            if (sort != -1) active_panel->sort_order = sort - 1;
+            update_files_in_both_panels();
         }
 
         if (ch == KEY_F(3)) { // F3
@@ -222,7 +212,7 @@ int main(int argc, char *argv[]) {
             char prompt[CMD_MAX] = {0};
             sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0, 0);
             if (btn == 1) {
                 operationContext stats = {0};
                 operationContext context = {0};
@@ -245,7 +235,7 @@ int main(int argc, char *argv[]) {
             char prompt[CMD_MAX] = {0};
             sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Move %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0, 0);
             if (btn == 1) {
                 operationContext stats = {0};
                 operationContext context = {0};
@@ -266,7 +256,7 @@ int main(int argc, char *argv[]) {
                 sprintf(prompt, active_panel->file_under_cursor);
             }
             sprintf(title, "Enter directory name to create:");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0, 0);
             if (btn == 1 && strlen(prompt) > 0) {
                 int err = mkdir_recursive(prompt, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
                 if (!err) {
@@ -299,7 +289,7 @@ int main(int argc, char *argv[]) {
 
             char title[CMD_MAX] = {};
             sprintf(title, "Delete %d file%s/director%s?", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, NULL, 1);
+            int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, NULL, 1, 0);
 
             if (btn == 1) {
                 operationContext stats = {0};

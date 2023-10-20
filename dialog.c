@@ -164,7 +164,7 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
     total_buttons_width += 2 * (i - 1);
 
     int cursor_pos = (width - total_buttons_width) / 2;
-    if (vertical_buttons) cursor_pos = 4;
+    if (vertical_buttons) cursor_pos = 3;
     int move_cursor_pos_x = 0;
     int move_cursor_pos_y = 0;
 
@@ -183,7 +183,7 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
             move_cursor_pos_y = y_pos;
         }
         if (vertical_buttons) {
-            mvwprintw(win, y_pos + lines(title), cursor_pos, "[%s] %s", i == selected && !editing_prompt ? "x" : " ", buttons[i]);
+            mvwprintw(win, y_pos + lines(title), cursor_pos, " [%s] %-*s ", i == selected && !editing_prompt ? "x" : " ", width - 12, buttons[i]);
         } else {
             mvwprintw(win, y_pos + lines(title), cursor_pos, "[ %s ]", buttons[i]);
         }
@@ -205,7 +205,6 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
     }
 
     if (move_cursor_pos_x > 0 || move_cursor_pos_y > 0) {
-        if (vertical_buttons)  move_cursor_pos_x--;
         wmove(win, move_cursor_pos_y + lines(title), move_cursor_pos_x);
     }
 

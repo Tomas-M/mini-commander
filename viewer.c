@@ -41,72 +41,66 @@ char *find_newline(char *buffer, size_t length) {
 
 
 file_lines* read_file_lines(const char *filename, int *num_lines) {
-    *num_lines = 0;
-    int initial_buffer_size = 4096;
-
-    FILE *file = fopen(filename, "rb");
-    if (file == NULL) {
-        //perror("Failed to open file");
+    // Open the file
+    int fd = open(filename, O_RDONLY);
+    if (fd == -1) {
         return NULL;
     }
 
-    file_lines *head = NULL, *current = NULL;
-    char *buffer = (char *)malloc(initial_buffer_size);
-    size_t buffer_size = initial_buffer_size;
-    size_t bytes_read, total_bytes_read = 0;
+    // Get the file size
+    struct stat sb;
+    if (fstat(fd, &sb) == -1) {
+        close(fd);
+        return NULL;
+    }
 
-    while ((bytes_read = fread(buffer + total_bytes_read, 1, buffer_size - total_bytes_read, file)) > 0) {
-        total_bytes_read += bytes_read;
-        char *newline_pos = find_newline(buffer, total_bytes_read);
+    // Memory map the file
+    char *file_in_memory = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 
-        while (newline_pos != NULL) {
-            file_lines *new_line = (file_lines *)malloc(sizeof(file_lines));
-            new_line->line_length = newline_pos - buffer + 1;
-            new_line->line = (char *)malloc(new_line->line_length);
-            memcpy(new_line->line, buffer, new_line->line_length);
-            new_line->next = NULL;
-            (*num_lines)++;
+    // Initialize linked list and counters
+    file_lines *head = NULL, *tail = NULL;
+    *num_lines = 0;
+    char *line_start = file_in_memory;
 
-            if (current == NULL) {
-                head = new_line;
-                current = head;
+    // Iterate through mapped memory
+
+    // Iterate through mapped memory
+    for (char *current = file_in_memory; current <= file_in_memory + sb.st_size; ++current) {
+        // Check for end of file or newline character
+        if (current == file_in_memory + sb.st_size || *current == '\n') {
+            file_lines *new_node = malloc(sizeof(file_lines));
+
+            // Allocate memory for the line data and copy it from the mapped memory
+            int line_length = current - line_start;
+            char *line_copy = malloc(line_length);
+            memcpy(line_copy, line_start, line_length);
+
+            // Fill in the new node
+            new_node->line = line_copy;
+            new_node->line_length = line_length;
+            new_node->next = NULL;
+
+            // Append to the linked list
+            if (!head) {
+                head = new_node;
             } else {
-                current->next = new_line;
-                current = new_line;
+                tail->next = new_node;
             }
+            tail = new_node;
 
-            total_bytes_read -= new_line->line_length;
-            memmove(buffer, newline_pos + 1, total_bytes_read);
-            newline_pos = find_newline(buffer, total_bytes_read);
-        }
-
-        if (total_bytes_read == buffer_size) {
-            buffer_size += initial_buffer_size;
-            char *new_buffer = realloc(buffer, buffer_size);
-            buffer = new_buffer;
+            // Prepare for next block
+            line_start = current + 1;
+            (*num_lines)++;
         }
     }
 
-    // Process any remaining content in the buffer into a line
-    if (total_bytes_read > 0) {
-        file_lines *new_line = (file_lines *)malloc(sizeof(file_lines));
-        new_line->line_length = total_bytes_read;
-        new_line->line = (char *)malloc(new_line->line_length);
-        memcpy(new_line->line, buffer, new_line->line_length);
-        new_line->next = NULL;
-        (*num_lines)++;
+    // Clean up
+    munmap(file_in_memory, sb.st_size);
+    close(fd);
 
-        if (current == NULL) {
-            head = new_line;
-        } else {
-            current->next = new_line;
-        }
-    }
-
-    free(buffer);
-    fclose(file);
     return head;
 }
+
 
 void free_file_lines(file_lines *head) {
     while (head != NULL) {
@@ -208,6 +202,8 @@ int view_file(char *filename, int editor_mode) {
             current_line = current_line->next;
         }
 
+        int absolute_cursor_col = cursor_col + screen_start_col;
+
         input = noesc(getch());
         switch (input) {
             case KEY_F(10):
@@ -228,9 +224,10 @@ int view_file(char *filename, int editor_mode) {
                 }
                 break;
             case KEY_DOWN:
-                if (editor_mode && cursor_row < LINES - 3) {
-                    cursor_row++;
-                    skip_refresh = 1;
+                if (editor_mode) {
+                    if (cursor_row < num_lines - 1) {
+                        cursor_row++;
+                    }
                 } else {
                     if (screen_start_line < num_lines - (max_y - 2)) {
                         screen_start_line++;
@@ -285,8 +282,7 @@ int view_file(char *filename, int editor_mode) {
 
             case KEY_RIGHT:
                 if (editor_mode) {
-                    int absolute_cursor_col = cursor_col + screen_start_col;
-                    if (absolute_cursor_col < current_line->line_length - 1) {
+                    if (absolute_cursor_col < current_line->line_length) {
                         if (cursor_col < max_x - 1) {
                             cursor_col++;
                         } else {
@@ -349,8 +345,6 @@ int view_file(char *filename, int editor_mode) {
             case '\n': // Enter key
             {
 
-                int absolute_cursor_col = cursor_col + screen_start_col;
-
                 // Split the current line into two at the cursor's position
                 char *first_half = malloc(absolute_cursor_col + 1);
                 char *second_half = malloc(current_line->line_length - absolute_cursor_col + 1);
@@ -392,8 +386,6 @@ int view_file(char *filename, int editor_mode) {
 
             case KEY_BACKSPACE: // Handle Backspace key
             {
-                int absolute_cursor_col = cursor_col + screen_start_col;
-
                 if (absolute_cursor_col > 0) {
                     // Remove the character to the left of the cursor
                     memmove(&current_line->line[absolute_cursor_col - 1], &current_line->line[absolute_cursor_col], current_line->line_length - absolute_cursor_col);
@@ -436,8 +428,6 @@ int view_file(char *filename, int editor_mode) {
 
             case KEY_DC: // Handle Delete key
             {
-                int absolute_cursor_col = cursor_col + screen_start_col;
-
                 if (absolute_cursor_col < current_line->line_length) {
                     // Remove the character at the cursor position
                     memmove(&current_line->line[absolute_cursor_col], &current_line->line[absolute_cursor_col + 1], current_line->line_length - absolute_cursor_col - 1);
@@ -488,7 +478,8 @@ int view_file(char *filename, int editor_mode) {
                 current_line = current_line->next;
             }
 
-            int absolute_cursor_col = cursor_col + screen_start_col;
+            // recalculate absolutes
+            absolute_cursor_col = cursor_col + screen_start_col;
 
             int visual_adjustment = 0;
             if (current_line->line_length > 1 &&

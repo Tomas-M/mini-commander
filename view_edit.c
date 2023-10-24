@@ -1,7 +1,3 @@
-// this is long line with comments  .dfc ropigop rkrpok erpogk reopg k regopker gpork pogk popo kvopdfkv odkpokrepo fkerpogk ergpoerk goperk gpeor gkeropgk erop gkj
-// this is long line with comments  .dfc ropigop rkrpok erpogk reopg k regopker gpork pogk popo kvopdfkv odkpokrepo fkerpogk ergpoerk goperk gpeor gkeropgk erop gkj
-// this is long line with comments  .dfc ropigop rkrpok erpogk reopg k regopker gpork pogk popo kvopdfkv odkpokrepo fkerpogk ergpoerk goperk gpeor gkeropgk erop gkj
-// this is long line with comments  .dfc ropigop rkrpok erpogk reopg k regopker gpork pogk popo kvopdfkv odkpokrepo fkerpogk ergpoerk goperk gpeor gkeropgk erop gkj
 #include <ncurses.h>
 #include <string.h>
 #include <unistd.h>
@@ -38,6 +34,31 @@ char *find_newline(char *buffer, size_t length) {
         return pos_n;
     }
 }
+
+
+
+int write_file_lines(const char *filename, file_lines *lines) {
+    char temp_filename[strlen(filename) + 10];  // Space for ".tmpN\0"
+    int counter = 0;
+
+    do {
+        snprintf(temp_filename, sizeof(temp_filename), "%s.tmp%d", filename, counter++);
+    } while (access(temp_filename, F_OK) != -1);
+
+    int fd = open(temp_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd == -1) return -1;
+
+    file_lines *current = lines;
+    while (current) {
+        write(fd, current->line, current->line_length);
+        if (current->next) write(fd, "\n", 1);
+        current = current->next;
+    }
+
+    close(fd);
+    return rename(temp_filename, filename) == 0 ? 0 : -1;
+}
+
 
 
 file_lines* read_file_lines(const char *filename, int *num_lines) {
@@ -142,6 +163,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
 }
 
 
+
 int view_file(char *filename, int editor_mode) {
     int input;
     int max_y, max_x;
@@ -214,13 +236,43 @@ int view_file(char *filename, int editor_mode) {
 
         input = noesc(getch());
         switch (input) {
-            case KEY_F(10):
             case KEY_F(3):
+                if (editor_mode) { 
+                    // TODO: perhaps some Mark function
+                } else {
+                    delwin(content_win);
+                    free_file_lines(lines);
+                    curs_set(1);
+                    return 0;
+                }
+                break;
+            case KEY_F(10):
             case 27:
+            {
+                if (is_modified) {
+                    int btn = show_dialog(SPRINTF("File %s was modified.\nSave before close?", filename), (char *[]) {"Yes", "No", "Cancel", NULL}, NULL, 0, 0);
+                    if (btn == 1) {
+                        write_file_lines(filename, lines);
+                    }
+                    if (btn != 1 && btn != 2) { // continue editing
+                        break;
+                    }
+                }
                 delwin(content_win);
                 free_file_lines(lines);
                 curs_set(1);
                 return 0;
+            }
+            case KEY_F(2):
+            {
+                int btn = show_dialog(SPRINTF("Confirm save file:\n%s", filename), (char *[]) {"Save", "Cancel", NULL}, NULL, 0, 0);
+                if (btn == 1) {
+                    write_file_lines(filename, lines);
+                    is_modified = 0;
+                }
+                break;
+            }
+
             case KEY_UP:
                 if (editor_mode && cursor_row > 0) {
                     cursor_row--;

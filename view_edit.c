@@ -538,6 +538,27 @@ int view_file(char *filename, int editor_mode) {
         }
 
 
+        if (input == KEY_MOUSE && editor_mode) {
+            MEVENT event;
+            if (getmouse(&event) == OK) {
+                // Mouse clicked at event.y and event.x
+
+                // Adjust based on screen start lines and columns due to scrolling
+                int target_line = event.y - 1 + screen_start_line; // -1 to account for top row
+                int target_col = event.x + screen_start_col;
+
+                // Update cursor_row and cursor_col with the target values.
+                cursor_row = event.y - 1;
+                cursor_col = event.x;
+
+                // Don't move cursor beyond the last line or beyond the line length
+                if (target_line >= num_lines) {
+                    cursor_row = num_lines - screen_start_line - 1;
+                }
+            }
+        }
+
+
         // insert character where it belongs
         if (editor_mode && isprint(input)) {
             is_modified = 1;
@@ -568,18 +589,15 @@ int view_file(char *filename, int editor_mode) {
             // recalculate absolutes
             absolute_cursor_col = cursor_col + screen_start_col;
 
-            int visual_adjustment = 0;
-            if (current_line->line_length > 1 &&
-                current_line->line[current_line->line_length - 2] == '\r' &&
-                current_line->line[current_line->line_length - 1] == '\n') {
-                visual_adjustment = 2;
-            } else if (current_line->line_length > 0 &&
-                       current_line->line[current_line->line_length - 1] == '\n') {
-                visual_adjustment = 1;
-            }
-
-            if (absolute_cursor_col > current_line->line_length - visual_adjustment) {
-                cursor_col = current_line->line_length - visual_adjustment;
+            // Don't move cursor beyond the end of the line
+            if (absolute_cursor_col > current_line->line_length) {
+                cursor_col = current_line->line_length - screen_start_col;
+                if (cursor_col < 0) {
+                    screen_start_col = current_line->line_length;
+                    cursor_col = 0;
+                }
+                absolute_cursor_col = cursor_col + screen_start_col;
+                skip_refresh = 0; // Force a refresh to update cursor position
             }
         }
 

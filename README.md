@@ -32,7 +32,6 @@ Usage:
     make
     ./mc
 
-    # there is no make install
-    # copy ./mc to your path if you like
-
-
+    # Result of compilation is standalone 'mc' binary, it does not need anything else.
+    # There is no make install because 'mc' would interfere with midnight commander.
+    # So install it manually, for example copy ./mc to your path if you like

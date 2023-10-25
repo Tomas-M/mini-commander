@@ -214,9 +214,13 @@ int view_file(char *filename, int editor_mode) {
         int absolute_cursor_row = cursor_row + screen_start_line;
 
         // Initial top row stats
-        mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3d]     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, screen_start_line + cursor_row + 1, num_lines);
-        int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
-        mvwprintw(toprow_win, 0, max_x - num_width, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
+        if (editor_mode) {
+            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3d]     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, screen_start_line + cursor_row + 1, num_lines);
+        } else {
+            mvwprintw(toprow_win, 0, 0, "%s", filename);
+            int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
+            mvwprintw(toprow_win, 0, max_x - num_width, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
+        }
         wrefresh(toprow_win);
 
         if (editor_mode) {

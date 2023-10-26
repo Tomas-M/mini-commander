@@ -176,7 +176,7 @@ int main(int argc, char *argv[]) {
             "Sort by modify time, from old to new",
             "Sort by name, from z to a",
             "Sort by size, from big to small",
-            "Sort by modify time, from new to old", NULL}, NULL, 0, 1);
+            "Sort by modify time, from new to old", NULL}, 0, NULL, 0, 1);
             if (sort != -1) active_panel->sort_order = sort - 1;
             update_files_in_both_panels();
         }
@@ -212,7 +212,7 @@ int main(int argc, char *argv[]) {
             char prompt[CMD_MAX] = {0};
             sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);
             if (btn == 1) {
                 operationContext stats = {0};
                 operationContext context = {0};
@@ -235,7 +235,7 @@ int main(int argc, char *argv[]) {
             char prompt[CMD_MAX] = {0};
             sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Move %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);
             if (btn == 1) {
                 operationContext stats = {0};
                 operationContext context = {0};
@@ -256,7 +256,7 @@ int main(int argc, char *argv[]) {
                 sprintf(prompt, active_panel->file_under_cursor);
             }
             sprintf(title, "Enter directory name to create:");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, prompt, 0, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);
             if (btn == 1 && strlen(prompt) > 0) {
                 int err = mkdir_recursive(prompt, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
                 if (!err) {
@@ -289,7 +289,7 @@ int main(int argc, char *argv[]) {
 
             char title[CMD_MAX] = {};
             sprintf(title, "Delete %d file%s/director%s?", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, NULL, 1, 0);
+            int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, 0, NULL, 1, 0);
 
             if (btn == 1) {
                 operationContext stats = {0};

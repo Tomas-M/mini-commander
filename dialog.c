@@ -224,8 +224,7 @@ void dialog_restore_screen() {
 }
 
 
-int show_dialog(char *title, char *buttons[], char *prompt, int is_danger, int vertical_buttons) {
-    int selected = 0;
+int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is_danger, int vertical_buttons) {
     int prompt_is_present = prompt ? 1 : 0;
     int editing_prompt = prompt ? 1 : 0;
 
@@ -387,5 +386,5 @@ int show_dialog(char *title, char *buttons[], char *prompt, int is_danger, int v
 
 
 void show_errormsg(char * msg) {
-    show_dialog(msg, (char *[]) {"OK", NULL}, NULL, 1, 0);
+    show_dialog(msg, (char *[]) {"OK", NULL}, 0, NULL, 1, 0);
 }

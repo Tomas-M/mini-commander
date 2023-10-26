@@ -18,7 +18,7 @@ void free_file_nodes(FileNode *head);
 int lines(char * title);
 WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int is_danger, int vertical_buttons);
 void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt, int is_danger, int vertical_buttons);
-int show_dialog(char *title, char *buttons[], char *prompt, int is_danger, int vertical_buttons);
+int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is_danger, int vertical_buttons);
 void show_errormsg(char * msg);
 void cursor_to_cmd(void);
 void update_cmd(void);

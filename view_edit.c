@@ -265,7 +265,7 @@ int view_file(char *filename, int editor_mode) {
             case 27:
             {
                 if (is_modified) {
-                    int btn = show_dialog(SPRINTF("File %s was modified.\nSave before close?", filename), (char *[]) {"Yes", "No", "Cancel", NULL}, NULL, 0, 0);
+                    int btn = show_dialog(SPRINTF("File %s was modified.\nSave before close?", filename), (char *[]) {"Yes", "No", "Cancel", NULL}, 2, NULL, 0, 0);
                     if (btn == 1) {
                         write_file_lines(filename, lines);
                     }
@@ -280,7 +280,7 @@ int view_file(char *filename, int editor_mode) {
             }
             case KEY_F(2):
             {
-                int btn = show_dialog(SPRINTF("Confirm save file:\n%s", filename), (char *[]) {"Save", "Cancel", NULL}, NULL, 0, 0);
+                int btn = show_dialog(SPRINTF("Confirm save file:\n%s", filename), (char *[]) {"Save", "Cancel", NULL}, 0, NULL, 0, 0);
                 if (btn == 1) {
                     write_file_lines(filename, lines);
                     is_modified = 0;

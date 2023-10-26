@@ -202,7 +202,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
         ret = lstat(src, &statbuf);
         if (ret != 0) {
             if (context->skip_all == 1) return OPERATION_SKIP;
-            btn = show_dialog(SPRINTF("Stat failed for \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1, 0);
+            btn = show_dialog(SPRINTF("Stat failed for \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0);
             if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
             if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
             if (btn == 3) { ret = OPERATION_RETRY; continue; }
@@ -232,7 +232,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
                 if (btn == 0) {
                     char title[CMD_MAX] = {};
                     sprintf(title, "Directory \"%s\" not empty.\nDelete it recursively?\n", src);
-                    btn = show_dialog(title, (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, NULL, 1, 0);
+                    btn = show_dialog(title, (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0);
                 }
 
                 if (btn == 1) { // yes
@@ -256,7 +256,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
                 }
             } else {
                 if (context->skip_all == 1) return OPERATION_SKIP;
-                btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1, 0);
+                btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0);
                 if (btn == 0 || btn == 1) { context->keep_item_selected = 1; return OPERATION_SKIP; }
                 if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
                 if (btn == 3) { ret = OPERATION_RETRY; continue; }
@@ -267,7 +267,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
             if (ret == 0) return OPERATION_OK;
             else {
                 if (context->skip_all == 1) return OPERATION_SKIP;
-                btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1, 0);
+                btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0);
                 if (btn == 0 || btn == 1) return OPERATION_SKIP;
                 if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
                 if (btn == 3) { ret = OPERATION_RETRY; continue; }
@@ -336,7 +336,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                         if (context->confirm_all_yes == 1) btn = 1;
                         if (context->confirm_all_no == 1) btn = 2;
                         if (btn == 0) {
-                            btn = show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, NULL, 1, 0);
+                            btn = show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0);
                         }
                         if (btn == 3) { // All
                             context->confirm_all_yes = 1;
@@ -383,7 +383,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     if (delta > 0) {
                         close(src_fd);
                         close(tgt_fd);
-                        int answer = show_dialog(SPRINTF("Incomplete file was retrieved. Keep it?\n%s", tgt), (char *[]) {"Keep it", "Delete", NULL}, NULL, 1, 0);
+                        int answer = show_dialog(SPRINTF("Incomplete file was retrieved. Keep it?\n%s", tgt), (char *[]) {"Keep it", "Delete", NULL}, 1, NULL, 1, 0);
                         if (answer == 2) unlink(tgt);
                         if (delta == 2) {
                             context->abort = 1;
@@ -437,7 +437,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     if (context->confirm_all_yes == 1) btn = 1;
                     if (context->confirm_all_no == 1) btn = 2;
                     if (btn == 0) {
-                        btn = show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, NULL, 1, 0);
+                        btn = show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0);
                     }
                     if (btn == 3) { // All
                         context->confirm_all_yes = 1;
@@ -482,9 +482,9 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
         if (strlen(errmsg) > 0) {
             if (context->skip_all == 1) return OPERATION_SKIP;
             if (errno != 0) {
-                btn = show_dialog(SPRINTF("%s\n%s (%d)", errmsg, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1, 0);
+                btn = show_dialog(SPRINTF("%s\n%s (%d)", errmsg, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0);
             } else {
-                btn = show_dialog(SPRINTF("%s", errmsg), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1, 0);
+                btn = show_dialog(SPRINTF("%s", errmsg), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0);
             }
             if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
             if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
@@ -519,7 +519,7 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
         ret = rename(src, tgt);
         if (ret != 0) {
             if (context->skip_all == 1) return OPERATION_SKIP;
-            btn = show_dialog(SPRINTF("Failed to rename\n%s\nTo\n%s\n%s (%d)", src, tgt, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, NULL, 1, 0);
+            btn = show_dialog(SPRINTF("Failed to rename\n%s\nTo\n%s\n%s (%d)", src, tgt, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0);
             if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
             if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
             if (btn == 3) { ret = OPERATION_RETRY; continue; }

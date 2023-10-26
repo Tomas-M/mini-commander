@@ -165,18 +165,18 @@ int main(int argc, char *argv[]) {
 
         if (ch == KEY_F(2)) { // F2
             int sort = show_dialog("Sort files and directories by:", (char *[]) {
+            "Sort by name, from a to z, mix dirs",
+            "Sort by size, from small to big, mix dirs",
+            "Sort by modify time, from old to new, mix dirs",
+            "Sort by name, from z to a, mix dirs",
+            "Sort by size, from big to small, mix dirs",
+            "Sort by modify time, from new to old, mix dirs",
             "Sort by name, from a to z, dirs first",
             "Sort by size, from small to big, dirs first",
             "Sort by modify time, from old to new, dirs first",
             "Sort by name, from z to a, dirs first",
             "Sort by size, from big to small, dirs first",
-            "Sort by modify time, from new to old, dirs first",
-            "Sort by name, from a to z",
-            "Sort by size, from small to big",
-            "Sort by modify time, from old to new",
-            "Sort by name, from z to a",
-            "Sort by size, from big to small",
-            "Sort by modify time, from new to old", NULL}, 0, NULL, 0, 1);
+            "Sort by modify time, from new to old, dirs first", NULL}, active_panel->sort_order, NULL, 0, 1);
             if (sort != -1) active_panel->sort_order = sort - 1;
             update_files_in_both_panels();
         }

@@ -1,7 +1,8 @@
 
 #define CMD_MAX 16384
 #define KEY_ALT_ENTER    0507  /* custom alt-enter key */
-#define KEY_ALT_a        0506  /* custom alt-enter key */
+#define KEY_ALT_a        0506  /* custom alt-a key */
+#define KEY_ALT_s        0505  /* custom alt-s key */
 
 typedef enum {
     SORT_BY_NAME_ASC = 0,

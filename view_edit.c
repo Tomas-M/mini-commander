@@ -62,6 +62,10 @@ int write_file_lines(const char *filename, file_lines *lines) {
 
 
 file_lines* read_file_lines(const char *filename, int *num_lines) {
+    // Initialize linked list and counters
+    file_lines *head = NULL, *tail = NULL;
+    *num_lines = 0;
+
     // Open the file
     int fd = open(filename, O_RDONLY);
     if (fd == -1) {
@@ -75,12 +79,19 @@ file_lines* read_file_lines(const char *filename, int *num_lines) {
         return NULL;
     }
 
+    // Handle empty file scenario separately
+    if (sb.st_size == 0) {
+        head = malloc(sizeof(file_lines));
+        head->line = malloc(0);
+        head->line_length = 0;
+        head->next = NULL;
+        return head;
+    }
+
+
     // Memory map the file
     char *file_in_memory = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 
-    // Initialize linked list and counters
-    file_lines *head = NULL, *tail = NULL;
-    *num_lines = 0;
     char *line_start = file_in_memory;
 
     // Iterate through mapped memory
@@ -504,6 +515,8 @@ int view_file(char *filename, int editor_mode) {
 
                         cursor_row--;
                         cursor_col = original_prev_line_length - screen_start_col;
+                    } else {
+                        is_modified = 0;
                     }
                 }
             }
@@ -531,6 +544,8 @@ int view_file(char *filename, int editor_mode) {
                         free(temp->line);
                         free(temp);
                         num_lines--;
+                    } else {
+                        is_modified = 0;
                     }
                 }
             }

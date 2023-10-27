@@ -158,15 +158,19 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
             if (isprint((unsigned char)*ptr)) { // Check if the character is printable
                 waddch(win, *ptr);
             } else if (*ptr != '\n') {
-                if (editor_mode) {
-                    wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLACK));
-                    waddch(win, *ptr >= 0 && *ptr < 32 ? '@' + *ptr : '.');
+                if (*ptr == 9) {
+                    wattron(win, COLOR_PAIR(COLOR_CYAN_ON_BLUE));
+                    waddch(win, '>');
                     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
                 } else {
-                    waddch(win, '.'); // If not, print a "." in viewer mode
+                    if (editor_mode) {
+                        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLACK));
+                        waddch(win, *ptr >= 0 && *ptr < 32 ? '@' + *ptr : '.');
+                        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+                    } else {
+                        waddch(win, '.'); // If not, print a "." in viewer mode
+                    }
                 }
-            } else {
-                // do not actually print \n at all
             }
         }
     }
@@ -575,7 +579,7 @@ int view_file(char *filename, int editor_mode) {
 
 
         // insert character where it belongs
-        if (editor_mode && isprint(input)) {
+        if (editor_mode && (isprint(input) || input == 9)) {
             is_modified = 1;
             // Reallocate memory for the new character
             char *new_line = realloc(current_line->line, current_line->line_length + 1);

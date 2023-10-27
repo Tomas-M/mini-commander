@@ -179,7 +179,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
 
 
 
-int view_file(char *filename, int editor_mode) {
+int view_edit_file(char *filename, int editor_mode) {
     int input;
     int max_y, max_x;
     int screen_start_line = 0;
@@ -653,4 +653,12 @@ int view_file(char *filename, int editor_mode) {
     }
 
     return 0;
+}
+
+int view_file(char *filename) {
+    return view_edit_file(filename, 0);
+}
+
+int edit_file(char *filename) {
+    return view_edit_file(filename, 1);
 }

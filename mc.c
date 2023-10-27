@@ -188,7 +188,7 @@ int main(int argc, char *argv[]) {
                 } else {
                     char file[CMD_MAX] = {};
                     sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
-                    view_file(file,0);
+                    view_file(file);
                     redraw_ui();
                 }
             }
@@ -196,11 +196,17 @@ int main(int argc, char *argv[]) {
 
 
         if (ch == KEY_F(4)) { // F4
-            char file[CMD_MAX] = {};
-            sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
-            view_file(file,1);
-            redraw_ui();
-            update_files_in_both_panels();
+            if (current) {
+                if (current->is_dir) {
+                    dive_into_directory(current);
+                } else {
+                    char file[CMD_MAX] = {};
+                    sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
+                    edit_file(file);
+                    redraw_ui();
+                    update_files_in_both_panels();
+               }
+           }
         }
 
         if (ch == KEY_F(5)) { // F5

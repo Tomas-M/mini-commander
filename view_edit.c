@@ -239,21 +239,24 @@ int view_edit_file(char *filename, int editor_mode) {
 
         int absolute_cursor_col = cursor_col + screen_start_col;
         int absolute_cursor_row = cursor_row + screen_start_line;
+        char charcode[10] = {0};
 
         // Initial top row stats
 
         if (editor_mode) {
-            unsigned char current_char = '\n';
             if (absolute_cursor_col < current_line->line_length) {
-                current_char = current_line->line[absolute_cursor_col];
-                // TODO: handle EOF
-            }
-            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3d] *(%4d/%db)   #%d     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, screen_start_line + cursor_row + 1, num_lines, seek + absolute_cursor_col, num_bytes, (int)current_char);
+                unsigned char current_char = current_line->line[absolute_cursor_col];
+                sprintf(charcode, "#%d", (int)current_char);
+            } else if (seek + absolute_cursor_col >= num_bytes) {
+                sprintf(charcode, "<EOF>");
+            } else sprintf(charcode, "#10");
+            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3d] *(%4d/%db)   %s     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, absolute_cursor_row + 1, num_lines, seek + absolute_cursor_col, num_bytes, charcode);
         } else {
             mvwprintw(toprow_win, 0, 0, "%s", filename);
             int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
             mvwprintw(toprow_win, 0, max_x - num_width, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
         }
+
         wrefresh(toprow_win);
 
         if (editor_mode) {
@@ -662,7 +665,6 @@ int view_edit_file(char *filename, int editor_mode) {
                 wclrtoeol(content_win);
             }
         }
-
 
         if (editor_mode) {
             wmove(content_win, cursor_row, cursor_col);

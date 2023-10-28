@@ -61,7 +61,7 @@ int write_file_lines(const char *filename, file_lines *lines) {
 
 
 
-file_lines* read_file_lines(const char *filename, int *num_lines) {
+file_lines* read_file_lines(const char *filename, off_t *num_lines, off_t *num_bytes) {
     // Initialize linked list and counters
     file_lines *head = NULL, *tail = NULL;
     *num_lines = 0;
@@ -79,12 +79,15 @@ file_lines* read_file_lines(const char *filename, int *num_lines) {
         return NULL;
     }
 
+    *num_bytes = sb.st_size;
+
     // Handle empty file scenario separately
     if (sb.st_size == 0) {
         head = malloc(sizeof(file_lines));
         head->line = malloc(0);
         head->line_length = 0;
         head->next = NULL;
+        *num_lines = 1;
         return head;
     }
 
@@ -164,7 +167,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
                     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
                 } else {
                     if (editor_mode) {
-                        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLACK));
+                        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_RED));
                         waddch(win, *ptr >= 0 && *ptr < 32 ? '@' + *ptr : '.');
                         wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
                     } else {
@@ -206,8 +209,8 @@ int view_edit_file(char *filename, int editor_mode) {
     wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
 
     // Build the linked list of line pointers
-    int num_lines;
-    file_lines *lines = read_file_lines(filename, &num_lines);
+    off_t num_lines, num_bytes;
+    file_lines *lines = read_file_lines(filename, &num_lines, &num_bytes);
 
     // Initial display
     file_lines *current = lines;
@@ -222,6 +225,15 @@ int view_edit_file(char *filename, int editor_mode) {
     // Handle user input for scrolling
     while(1) {
 
+        int seek = 0;
+
+        // globally get current line, since it may be used on many places later
+        file_lines *current_line = lines;
+        for (int i = 0; i < screen_start_line + cursor_row; i++) {
+            seek += current_line->line_length + 1;
+            current_line = current_line->next;
+        }
+
         int shown_line_max = screen_start_line + max_y - 2;
         if (shown_line_max > num_lines) shown_line_max = num_lines;
 
@@ -229,8 +241,14 @@ int view_edit_file(char *filename, int editor_mode) {
         int absolute_cursor_row = cursor_row + screen_start_line;
 
         // Initial top row stats
+
         if (editor_mode) {
-            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3d]     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, screen_start_line + cursor_row + 1, num_lines);
+            unsigned char current_char = '\n';
+            if (absolute_cursor_col < current_line->line_length) {
+                current_char = current_line->line[absolute_cursor_col];
+                // TODO: handle EOF
+            }
+            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3d] *(%4d/%db)   #%d     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, screen_start_line + cursor_row + 1, num_lines, seek + absolute_cursor_col, num_bytes, (int)current_char);
         } else {
             mvwprintw(toprow_win, 0, 0, "%s", filename);
             int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
@@ -246,12 +264,6 @@ int view_edit_file(char *filename, int editor_mode) {
 
         move(cursor_row + 1, cursor_col);
         skip_refresh = 0;
-
-        // globally get current line, since it may be used on many places later
-        file_lines *current_line = lines;
-        for (int i = 0; i < screen_start_line + cursor_row; i++) {
-            current_line = current_line->next;
-        }
 
         input = noesc(getch());
         switch (input) {
@@ -463,6 +475,7 @@ int view_edit_file(char *filename, int editor_mode) {
                     current_line->line_length = absolute_cursor_col;
 
                     num_lines++;
+                    num_bytes++;
 
                     // Move the cursor to the beginning of the next line
                     if (cursor_row < max_y - 3) {
@@ -489,6 +502,7 @@ int view_edit_file(char *filename, int editor_mode) {
                         current_line->line_length--;
                         char *new_line = realloc(current_line->line, current_line->line_length);
                         current_line->line = new_line;
+                        num_bytes--;
 
                         // Move the cursor to the left
                         if (cursor_col > 0) {
@@ -516,6 +530,7 @@ int view_edit_file(char *filename, int editor_mode) {
                         free(current_line);
                         current_line = prev_line;
                         num_lines--;
+                        num_bytes--;
 
                         cursor_row--;
                         cursor_col = original_prev_line_length - screen_start_col;
@@ -536,6 +551,7 @@ int view_edit_file(char *filename, int editor_mode) {
                         current_line->line_length--;
                         char *new_line = realloc(current_line->line, current_line->line_length);
                         current_line->line = new_line;
+                        num_bytes--;
                     } else if (current_line->next) {
                         // Merge the current line with the next line
                         int new_length = current_line->line_length + current_line->next->line_length;
@@ -548,6 +564,7 @@ int view_edit_file(char *filename, int editor_mode) {
                         free(temp->line);
                         free(temp);
                         num_lines--;
+                        num_bytes--;
                     } else {
                         is_modified = 0;
                     }
@@ -580,7 +597,7 @@ int view_edit_file(char *filename, int editor_mode) {
 
         // insert character where it belongs
         if (editor_mode && (isprint(input) || input == 9)) {
-            is_modified = 1;
+            is_modified = 1; num_bytes++;
             // Reallocate memory for the new character
             char *new_line = realloc(current_line->line, current_line->line_length + 1);
             current_line->line = new_line;

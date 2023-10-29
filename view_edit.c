@@ -1,3 +1,4 @@
+#include <regex.h>
 #include <ncurses.h>
 #include <string.h>
 #include <unistd.h>
@@ -149,6 +150,11 @@ void free_file_lines(file_lines *head) {
 void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode) {
     char *ptr = line->line;
     int offset = 0;
+
+//    regex_t regex;
+//    regmatch_t pmatch[1];
+//    regcomp(&regex, "\\b(include|char|return)\\b", REG_EXTENDED);
+
     while (offset < line->line_length && offset < current_col) {
         ptr++;
         offset++;
@@ -158,6 +164,24 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         wclrtoeol(win);
     } else {
         for (int x = 0; x < max_x && offset < line->line_length; x++, ptr++, offset++) {
+
+//            // Before printing each character, check if it is the start of one of the highlighted words
+//            if (regexec(&regex, ptr, 1, pmatch, 0) == 0 && pmatch[0].rm_so == 0) {
+//                wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
+//                wattron(win, A_BOLD);
+//                for (int i = 0; i < pmatch[0].rm_eo; i++) {
+//                    waddch(win, ptr[i]);
+//                    if (i < pmatch[0].rm_eo - 1) { // Only increment if it's not the last character of the match
+//                        x++;
+//                        offset++;
+//                    }
+//                }
+//                wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+//                wattroff(win, A_BOLD);
+//                ptr += pmatch[0].rm_eo - 1;
+//                continue;
+//            }
+
             if (isprint((unsigned char)*ptr)) { // Check if the character is printable
                 waddch(win, *ptr);
             } else if (*ptr != '\n') {
@@ -178,6 +202,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         }
     }
     wrefresh(win);
+    regfree(&regex); // Free the compiled regex memory
 }
 
 

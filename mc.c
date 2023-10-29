@@ -50,6 +50,7 @@ int noesc(int ch) {
 
         if (ch == 10) return KEY_ALT_ENTER;
         if (ch == 'a') return KEY_ALT_a;
+        if (ch == 's') return KEY_ALT_s;
 
         while (ch >= '0' && ch <= '9') {  // Read numbers
             num = num * 10 + (ch - '0');
@@ -403,6 +404,21 @@ int main(int argc, char *argv[]) {
         }
 
 
+        int continue_search_mode = 0;
+        int search_skip_current = 0;
+
+        if (ch == KEY_ALT_s) {
+            if (active_panel->search_mode == 1) { // already searching
+                memcpy(active_panel->search_text, active_panel->prev_search_text, sizeof(active_panel->search_text));
+                search_skip_current = 1;
+            } else { // new search
+                memset(active_panel->search_text, 0, sizeof(active_panel->search_text));
+                active_panel->search_mode = 1;
+            }
+            continue_search_mode = 1;
+        }
+
+
         if (ch == '\n')
         {
             if (cmd_len == 0) {
@@ -444,20 +460,34 @@ int main(int argc, char *argv[]) {
             redraw_ui();
         }
 
+
         if (ch == 18 || ch == KEY_F(9)) { // Ctrl+R
             update_files_in_both_panels();
         }
 
-        if (ch == KEY_BACKSPACE && cursor_pos > 0) {
-            memmove(cmd + cursor_pos - 1, cmd + cursor_pos, cmd_len - cursor_pos);
-            cmd[--cmd_len] = '\0';
-            cursor_pos--;
+
+        if (ch == KEY_BACKSPACE) {
+            if (active_panel->search_mode == 1) {
+                continue_search_mode = 1;
+                if (strlen(active_panel->search_text) > 0) {
+                    active_panel->search_text[strlen(active_panel->search_text) - 1] = '\0';
+                    memcpy(active_panel->prev_search_text, active_panel->search_text, sizeof(active_panel->search_text));
+                }
+            } else if (cursor_pos > 0) {
+                memmove(cmd + cursor_pos - 1, cmd + cursor_pos, cmd_len - cursor_pos);
+                cmd[--cmd_len] = '\0';
+                cursor_pos--;
+            }
         }
 
-        if (ch == KEY_DC && cursor_pos < cmd_len) {
-            memmove(cmd + cursor_pos, cmd + cursor_pos + 1, cmd_len - cursor_pos - 1);
-            cmd[--cmd_len] = '\0';
+
+        if (ch == KEY_DC) {
+            if (cursor_pos < cmd_len) {
+                memmove(cmd + cursor_pos, cmd + cursor_pos + 1, cmd_len - cursor_pos - 1);
+                cmd[--cmd_len] = '\0';
+            }
         }
+
 
         if (ch == KEY_LEFT) {
             if (cursor_pos > 0) {
@@ -511,11 +541,20 @@ int main(int argc, char *argv[]) {
         }
 
 
-        if (ch >= 32 && ch <= 126 && cmd_len < CMD_MAX - 1) {
-            memmove(cmd + cursor_pos + 1, cmd + cursor_pos, cmd_len - cursor_pos);
-            cmd[cursor_pos] = ch;
-            cmd[++cmd_len] = '\0';
-            cursor_pos++;
+        if (isprint(ch)) {
+            if (active_panel->search_mode == 1) {
+                continue_search_mode = 1;
+                if (strlen(active_panel->search_text) < CMD_MAX - 1) {
+                    active_panel->search_text[strlen(active_panel->search_text) + 1] = 0;
+                    active_panel->search_text[strlen(active_panel->search_text)] = ch;
+                }
+                memcpy(active_panel->prev_search_text, active_panel->search_text, sizeof(active_panel->search_text));
+            } else if (cmd_len < CMD_MAX - 1) {
+                memmove(cmd + cursor_pos + 1, cmd + cursor_pos, cmd_len - cursor_pos);
+                cmd[cursor_pos] = ch;
+                cmd[++cmd_len] = '\0';
+                cursor_pos++;
+            }
         }
 
         if (ch == '\t') {
@@ -525,6 +564,41 @@ int main(int argc, char *argv[]) {
                 active_panel = &left_panel;
             }
         }
+
+
+        if (!continue_search_mode) {
+            active_panel->search_mode = 0;
+        }
+
+
+        if (active_panel->search_mode) {
+            FileNode *files = active_panel->files;
+            int index = 0;
+            int found = -1;
+
+            // search from beginning while we get to current item anyway
+            while (files != NULL && index < active_panel->selected_index) {
+                if (strncmp(active_panel->search_text, files->name, strlen(active_panel->search_text)) == 0) {
+                    if (found == -1) found = index;
+                }
+                index++;
+                files = files->next;
+            }
+
+            if (search_skip_current) { index++; files = files->next; }
+
+            while (files != NULL) {
+                if (strncmp(active_panel->search_text, files->name, strlen(active_panel->search_text)) == 0) {
+                    found = index;
+                    break;
+                }
+                index++;
+                files = files->next;
+            }
+
+            if (found >= 0) active_panel->selected_index = found;
+        }
+
 
         // make sure scroll does not overflow
         if (active_panel->selected_index < 0) {

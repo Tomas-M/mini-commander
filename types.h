@@ -45,6 +45,9 @@ typedef struct PanelProp {
     int num_selected_files;
     off_t bytes_selected_files;
     int files_count;
+    int search_mode;
+    char search_text[CMD_MAX];
+    char prev_search_text[CMD_MAX];
     FileNode *files;
 } PanelProp;
 

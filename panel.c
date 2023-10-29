@@ -242,8 +242,16 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         line++;
     }
 
-    // print info for active file
-    mvwprintw(win, height - 2, 1, "%-*s", width, SHORTEN(info,width));
+    if (panel->search_mode == 1) {
+        // search input
+        wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+        mvwprintw(win, height - 2, 1, "/%-*s", width - 1, panel->search_text);
+        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+    } else {
+        // print info for active file
+        mvwprintw(win, height - 2, 1, "%-*s", width, SHORTEN(info,width));
+    }
+
 
     // print selected
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));

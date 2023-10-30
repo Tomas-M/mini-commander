@@ -97,6 +97,7 @@ int main(int argc, char *argv[]) {
     // Define the long options
     static struct option long_options[] = {
         {"nocolor", no_argument, 0, 'b'},
+        {"version", no_argument, 0, 'v'},
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
     };
@@ -105,13 +106,18 @@ int main(int argc, char *argv[]) {
     int option_index = 0;
 
     // parse commandline arguments
-    while ((opt = getopt_long(argc, argv, "b", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "bhv", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'b':
                 color_enabled = 0;
                 break;
             case 'h':
+                fprintf(stderr, "Mini Commander (c) 2023 Tomas Matejicek + ChatGPT\n", argv[0]);
                 fprintf(stderr, "Usage: %s [-b|--nocolor] [-h|--help]\n", argv[0]);
+                return 1;
+                break;
+            case 'v':
+                fprintf(stderr, "Version 1.1\n", argv[0]);
                 return 1;
                 break;
         }

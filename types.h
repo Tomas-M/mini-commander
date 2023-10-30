@@ -100,6 +100,14 @@ enum operationResult {
 typedef int (*OperationFunc)(const char *, const char *, operationContext *);
 
 
+// Define a struct to pair regex patterns with their associated colors.
+typedef struct {
+    char *pattern;
+    int color_pair;
+    int is_bold;
+} PatternColorPair;
+
+
 extern PanelProp left_panel;
 extern PanelProp right_panel;
 extern PanelProp* active_panel;

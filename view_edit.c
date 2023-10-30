@@ -147,42 +147,75 @@ void free_file_lines(file_lines *head) {
     }
 }
 
+
 void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode) {
     char *ptr = line->line;
     int offset = 0;
+    regmatch_t pmatch[1];
 
-//    regex_t regex;
-//    regmatch_t pmatch[1];
-//    regcomp(&regex, "\\b(include|char|return)\\b", REG_EXTENDED);
+    // Array of PatternColorPair to centralize pattern matching.
+    // This is for simple C code highlighting, we can extend this to other syntax types
+    // we should check file type to decide what kind of highlighting should be used
+    PatternColorPair patterns[] = {
+/*
+        {"^#.*$", COLOR_PAIR(COLOR_RED_ON_BLUE), 1},
+        {"//.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0},
+        {"\\b(int|char|void|sizeof|while|return)\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1},
+        {"!|%|==|!=|&&|[*]|->|[+]|-|[|][|]|=|>|<|/", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1},
+        {"[(){},]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 0},
+        {"[;&^|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1},
+*/
+    };
+
+    int num_patterns = sizeof(patterns) / sizeof(PatternColorPair);
+    regex_t regex[num_patterns];
+
+    for (int i = 0; i < num_patterns; i++) {
+        regcomp(&regex[i], patterns[i].pattern, REG_EXTENDED);
+    }
 
     while (offset < line->line_length && offset < current_col) {
         ptr++;
         offset++;
     }
+
     if (offset < current_col) {
-        // If the line is shorter than current_col, just clear the line
         wclrtoeol(win);
     } else {
         for (int x = 0; x < max_x && offset < line->line_length; x++, ptr++, offset++) {
 
-//            // Before printing each character, check if it is the start of one of the highlighted words
-//            if (regexec(&regex, ptr, 1, pmatch, 0) == 0 && pmatch[0].rm_so == 0) {
-//                wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
-//                wattron(win, A_BOLD);
-//                for (int i = 0; i < pmatch[0].rm_eo; i++) {
-//                    waddch(win, ptr[i]);
-//                    if (i < pmatch[0].rm_eo - 1) { // Only increment if it's not the last character of the match
-//                        x++;
-//                        offset++;
-//                    }
-//                }
-//                wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-//                wattroff(win, A_BOLD);
-//                ptr += pmatch[0].rm_eo - 1;
-//                continue;
-//            }
+            int matched = 0;
+            // copy line to temporary buffer for matching, to make sure it is terminated by zero byte even if the original is not
+            int remaining_length = line->line_length - offset;
+            char *temp_str = strndup(ptr, remaining_length);
 
-            if (isprint((unsigned char)*ptr)) { // Check if the character is printable
+            for (int i = 0; i < num_patterns; i++) {
+                if (regexec(&regex[i], temp_str, 1, pmatch, 0) == 0 && pmatch[0].rm_so == 0) {
+                    matched = 1;
+                    wattron(win, patterns[i].color_pair);
+                    if (patterns[i].is_bold) {
+                        wattron(win, A_BOLD);
+                    }
+
+                    for (int j = 0; j < pmatch[0].rm_eo; j++) {
+                        waddch(win, ptr[j]);
+                        if (j < pmatch[0].rm_eo - 1) {
+                            x++;
+                            offset++;
+                        }
+                    }
+
+                    wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+                    wattroff(win, A_BOLD);
+                    ptr += pmatch[0].rm_eo - 1;
+                    break;  // Stop checking other patterns after the first match
+                }
+            }
+
+            free(temp_str);
+            if (matched) continue;
+
+            if (isprint((unsigned char)*ptr)) {
                 waddch(win, *ptr);
             } else if (*ptr != '\n') {
                 if (*ptr == 9) {
@@ -195,16 +228,18 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
                         waddch(win, *ptr >= 0 && *ptr < 32 ? '@' + *ptr : '.');
                         wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
                     } else {
-                        waddch(win, '.'); // If not, print a "." in viewer mode
+                        waddch(win, '.');
                     }
                 }
             }
         }
     }
-    wrefresh(win);
-    regfree(&regex); // Free the compiled regex memory
-}
 
+    for (int i = 0; i < num_patterns; i++) {
+        regfree(&regex[i]);  // Free each compiled regex
+    }
+    wrefresh(win);
+}
 
 
 int view_edit_file(char *filename, int editor_mode) {

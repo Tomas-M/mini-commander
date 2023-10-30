@@ -148,26 +148,10 @@ void free_file_lines(file_lines *head) {
 }
 
 
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode) {
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, PatternColorPair* patterns, int num_patterns) {
     char *ptr = line->line;
     int offset = 0;
     regmatch_t pmatch[1];
-
-    // Array of PatternColorPair to centralize pattern matching.
-    // This is for simple C code highlighting, we can extend this to other syntax types
-    // we should check file type to decide what kind of highlighting should be used
-    PatternColorPair patterns[] = {
-/*
-        {"^#.*$", COLOR_PAIR(COLOR_RED_ON_BLUE), 1},
-        {"//.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0},
-        {"\\b(int|char|void|sizeof|while|return)\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1},
-        {"!|%|==|!=|&&|[*]|->|[+]|-|[|][|]|=|>|<|/", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1},
-        {"[(){},]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 0},
-        {"[;&^|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1},
-*/
-    };
-
-    int num_patterns = sizeof(patterns) / sizeof(PatternColorPair);
     regex_t regex[num_patterns];
 
     for (int i = 0; i < num_patterns; i++) {
@@ -251,6 +235,8 @@ int view_edit_file(char *filename, int editor_mode) {
     int cursor_col = 0;
     int skip_refresh = 0;
     int is_modified = 0;
+    PatternColorPair patterns[100] = {0};
+    int num_patterns = 0;
 
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);
@@ -272,11 +258,40 @@ int view_edit_file(char *filename, int editor_mode) {
     off_t num_lines, num_bytes;
     file_lines *lines = read_file_lines(filename, &num_lines, &num_bytes);
 
+    // Extract file extension
+    char *file_type = strrchr(filename, '.');  // find last '.' in filename
+
+    // Syntax highlighting for editor mode
+    if (file_type && (strcmp(file_type, ".c") == 0 || strcmp(file_type, ".h") == 0)) {
+        patterns[num_patterns++] = (PatternColorPair) {"\".*\"", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0};
+        patterns[num_patterns++] = (PatternColorPair) {"^(#include|#define).*$", COLOR_PAIR(COLOR_RED_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"//.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0};
+        patterns[num_patterns++] = (PatternColorPair) {"\\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|asm|inline|wchar_t|[.][.][.])\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"!|%|==|!=|&&|[*]|->|[+]|-|[|][|]|=|>|<|/", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"[(){},:?]|\\[|\\]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 0};
+        patterns[num_patterns++] = (PatternColorPair) {"[;&^~|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1};
+    }
+
+    if (file_type && strcmp(file_type, ".sh") == 0 || (lines != NULL && lines->line_length > 3 && strncmp(lines->line, "#!/", 3) == 0)) {
+        patterns[num_patterns++] = (PatternColorPair) {"^#!/.*", COLOR_PAIR(COLOR_CYAN_ON_BLACK), 0};
+        patterns[num_patterns++] = (PatternColorPair) {"#.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0};
+        patterns[num_patterns++] = (PatternColorPair) {"[;{}]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$[(].*[)]|\\$[{].*[}]", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$[*]|\\$@|\\$#|\\$[?]|\\$-|\\$\\$|\\$!|\\$_", COLOR_PAIR(COLOR_RED_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"2>&1|1>&2|2>|1>", COLOR_PAIR(COLOR_RED_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$[0123456789]", COLOR_PAIR(COLOR_RED_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$[a-zA-Z0-9_]+", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"\\bfunction\\b.*[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"[a-zA-Z0-9_]+[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"\\b(break|case|clear|continue|declare|done|do|echo|elif|else|esac|exit|export|fi|for|getopts|if|in|read|return|select|set|shift|source|then|trap|until|unset|wait|while)\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1};
+    }
+
     // Initial display
     file_lines *current = lines;
     for (int i = 0; i < max_y - 2 && current != NULL; i++) {
         wmove(content_win, i, 0);
-        display_line(content_win, current, max_x, screen_start_col, editor_mode); // Pass screen_start_col to display_line
+        display_line(content_win, current, max_x, screen_start_col, editor_mode, patterns, num_patterns);
         current = current->next;
     }
 
@@ -715,7 +730,7 @@ int view_edit_file(char *filename, int editor_mode) {
             for (i = 0; i < max_y - 2 && temp != NULL; i++) {
                 wmove(content_win, i, 0);
                 wclrtoeol(content_win);
-                display_line(content_win, temp, max_x, screen_start_col, editor_mode);
+                display_line(content_win, temp, max_x, screen_start_col, editor_mode, patterns, num_patterns);
                 temp = temp->next;
             }
 

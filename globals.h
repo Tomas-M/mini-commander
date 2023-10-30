@@ -22,7 +22,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 void show_errormsg(char * msg);
 void cursor_to_cmd(void);
 void update_cmd(void);
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode);
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, PatternColorPair* patterns, int num_patterns);
 int view_file(char *filename);
 int edit_file(char *filename);
 int file_has_extension(const char *filename, const char *extensions[]);

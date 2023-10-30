@@ -41,6 +41,11 @@ int cmd_len = 0;
 int color_enabled = 1;
 
 int noesc(int ch) {
+
+    // some special cases, who knows why
+    if (ch == 362) return KEY_HOME;
+    if (ch == 385) return KEY_END;
+
     int num = 0;
     if (ch == 27) {  // Escape character
         ch = getch();

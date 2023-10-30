@@ -272,7 +272,7 @@ int view_edit_file(char *filename, int editor_mode) {
         patterns[num_patterns++] = (PatternColorPair) {"[;&^~|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1};
     }
 
-    if (file_type && strcmp(file_type, ".sh") == 0 || (lines != NULL && lines->line_length > 3 && strncmp(lines->line, "#!/", 3) == 0)) {
+    if ((file_type && (strcmp(file_type, ".sh") == 0)) || (lines != NULL && lines->line_length > 3 && strncmp(lines->line, "#!/", 3) == 0)) {
         patterns[num_patterns++] = (PatternColorPair) {"^#!/.*", COLOR_PAIR(COLOR_CYAN_ON_BLACK), 0};
         patterns[num_patterns++] = (PatternColorPair) {"#.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0};
         patterns[num_patterns++] = (PatternColorPair) {"[;{}]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 1};
@@ -325,11 +325,11 @@ int view_edit_file(char *filename, int editor_mode) {
             } else if (seek + absolute_cursor_col >= num_bytes) {
                 sprintf(charcode, "<EOF>");
             } else sprintf(charcode, "#10");
-            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3d] *(%4d/%db)   %s     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, absolute_cursor_row + 1, num_lines, seek + absolute_cursor_col, num_bytes, charcode);
+            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3lld] *(%4d/%lldb)   %s     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, absolute_cursor_row + 1, num_lines, seek + absolute_cursor_col, num_bytes, charcode);
         } else {
             mvwprintw(toprow_win, 0, 0, "%s", filename);
-            int num_width = snprintf(NULL, 0, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
-            mvwprintw(toprow_win, 0, max_x - num_width, "   %d/%d   %d%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
+            int num_width = snprintf(NULL, 0, "        %d/%lld   %lld%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
+            mvwprintw(toprow_win, 0, max_x - num_width, "        %d/%lld   %lld%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
         }
 
         wrefresh(toprow_win);

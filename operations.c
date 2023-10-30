@@ -165,7 +165,7 @@ int countstats_operation(const char *src, const char *tgt, operationContext *con
 
     context->keep_item_selected = 1; // don't unselect items on stat
     format_number(context->total_size, num);
-    sprintf(infotext, "Items: %d\nSize: %s bytes", context->total_items, num);
+    sprintf(infotext, "Items: %lld\nSize: %s bytes", context->total_items, num);
 
     int delta = update_progress_dialog_delta(SPRINTF("Scanning %s", src), 0, 0, infotext);
     if (delta == 1) {

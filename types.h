@@ -106,6 +106,7 @@ typedef struct {
     char *pattern;
     int color_pair;
     int is_bold;
+    regex_t regex;
 } PatternColorPair;
 
 

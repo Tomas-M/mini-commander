@@ -1,21 +1,4 @@
-#include <regex.h>
-#include <ncurses.h>
-#include <string.h>
-#include <unistd.h>
-#include <pwd.h>
-#include <sys/utsname.h>
-#include <stdlib.h>
-#include <dirent.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <sys/time.h>
-#include <ctype.h>
-
-#include <stdio.h>
-#include <sys/mman.h>
-#include <fcntl.h>
-
+#include "includes.h"
 #include "types.h"
 #include "globals.h"
 
@@ -147,16 +130,16 @@ void free_file_lines(file_lines *head) {
     }
 }
 
+void free_pattern_regexes(PatternColorPair* patterns, int num_patterns) {
+    for (int i = 0; i < num_patterns; i++) {
+        regfree(&patterns[i].regex);  // Free each compiled regex
+    }
+}
 
 void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, PatternColorPair* patterns, int num_patterns) {
     char *ptr = line->line;
     int offset = 0;
     regmatch_t pmatch[1];
-    regex_t regex[num_patterns];
-
-    for (int i = 0; i < num_patterns; i++) {
-        regcomp(&regex[i], patterns[i].pattern, REG_EXTENDED);
-    }
 
     while (offset < line->line_length && offset < current_col) {
         ptr++;
@@ -174,7 +157,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
             char *temp_str = strndup(ptr, remaining_length);
 
             for (int i = 0; i < num_patterns; i++) {
-                if (regexec(&regex[i], temp_str, 1, pmatch, 0) == 0 && pmatch[0].rm_so == 0) {
+                if (regexec(&patterns[i].regex, temp_str, 1, pmatch, 0) == 0 && pmatch[0].rm_so == 0) {
                     matched = 1;
                     wattron(win, patterns[i].color_pair);
                     if (patterns[i].is_bold) {
@@ -219,9 +202,6 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         }
     }
 
-    for (int i = 0; i < num_patterns; i++) {
-        regfree(&regex[i]);  // Free each compiled regex
-    }
     wrefresh(win);
 }
 
@@ -261,31 +241,38 @@ int view_edit_file(char *filename, int editor_mode) {
     // Extract file extension
     char *file_type = strrchr(filename, '.');  // find last '.' in filename
 
+
     // Syntax highlighting for editor mode
     if (file_type && (strcmp(file_type, ".c") == 0 || strcmp(file_type, ".h") == 0)) {
-        patterns[num_patterns++] = (PatternColorPair) {"\".*\"", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0};
-        patterns[num_patterns++] = (PatternColorPair) {"^(#include|#define).*$", COLOR_PAIR(COLOR_RED_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"//.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0};
-        patterns[num_patterns++] = (PatternColorPair) {"\\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|asm|inline|wchar_t|[.][.][.])\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"!|%|==|!=|&&|[*]|->|[+]|-|[|][|]|=|>|<|/", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"[(){},:?]|\\[|\\]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 0};
-        patterns[num_patterns++] = (PatternColorPair) {"[;&^~|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"\".*\"", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"^(#include|#define).*$", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"//.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"\\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|asm|inline|wchar_t|[.][.][.])\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"!|%|==|!=|&&|[*]|->|[+]|-|[|][|]|=|>|<|/", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"[(){},:?]|\\[|\\]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 0, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"[;&^~|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, NULL};
     }
 
     if ((file_type && (strcmp(file_type, ".sh") == 0)) || (lines != NULL && lines->line_length > 3 && strncmp(lines->line, "#!/", 3) == 0)) {
-        patterns[num_patterns++] = (PatternColorPair) {"^#!/.*", COLOR_PAIR(COLOR_CYAN_ON_BLACK), 0};
-        patterns[num_patterns++] = (PatternColorPair) {"#.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0};
-        patterns[num_patterns++] = (PatternColorPair) {"[;{}]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"\\$[(].*[)]|\\$[{].*[}]", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0};
-        patterns[num_patterns++] = (PatternColorPair) {"\\$[*]|\\$@|\\$#|\\$[?]|\\$-|\\$\\$|\\$!|\\$_", COLOR_PAIR(COLOR_RED_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"2>&1|1>&2|2>|1>", COLOR_PAIR(COLOR_RED_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"\\$[0123456789]", COLOR_PAIR(COLOR_RED_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"\\$[a-zA-Z0-9_]+", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"\\$", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"\\bfunction\\b.*[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"[a-zA-Z0-9_]+[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1};
-        patterns[num_patterns++] = (PatternColorPair) {"\\b(break|case|clear|continue|declare|done|do|echo|elif|else|esac|exit|export|fi|for|getopts|if|in|read|return|select|set|shift|source|then|trap|until|unset|wait|while)\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1};
+        patterns[num_patterns++] = (PatternColorPair) {"^#!/.*", COLOR_PAIR(COLOR_CYAN_ON_BLACK), 0, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"#.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"[;{}]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$[(].*[)]|\\$[{].*[}]", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$[*]|\\$@|\\$#|\\$[?]|\\$-|\\$\\$|\\$!|\\$_", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"2>&1|1>&2|2>|1>", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$[0123456789]", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$[a-zA-Z0-9_]+", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"\\$", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"\\bfunction\\b.*[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"[a-zA-Z0-9_]+[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, NULL};
+        patterns[num_patterns++] = (PatternColorPair) {"\\b(break|case|clear|continue|declare|done|do|echo|elif|else|esac|exit|export|fi|for|getopts|if|in|read|return|select|set|shift|source|then|trap|until|unset|wait|while)\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, NULL};
     }
+
+    for (int i = 0; i < num_patterns; i++) {
+        regcomp(&patterns[i].regex, patterns[i].pattern, REG_EXTENDED);
+    }
+
+
 
     // Initial display
     file_lines *current = lines;
@@ -351,6 +338,7 @@ int view_edit_file(char *filename, int editor_mode) {
                 } else {
                     delwin(content_win);
                     free_file_lines(lines);
+                    free_pattern_regexes(patterns, num_patterns);
                     curs_set(1);
                     return 0;
                 }
@@ -369,6 +357,7 @@ int view_edit_file(char *filename, int editor_mode) {
                 }
                 delwin(content_win);
                 free_file_lines(lines);
+                free_pattern_regexes(patterns, num_patterns);
                 curs_set(1);
                 return 0;
             }

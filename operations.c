@@ -1,19 +1,4 @@
-#include <ncurses.h>
-#include <string.h>
-#include <unistd.h>
-#include <pwd.h>
-#include <sys/utsname.h>
-#include <stdlib.h>
-#include <dirent.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <sys/time.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <fcntl.h>
-#include <errno.h>
-
+#include "includes.h"
 #include "types.h"
 #include "globals.h"
 

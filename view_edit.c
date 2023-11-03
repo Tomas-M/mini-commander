@@ -217,6 +217,7 @@ int view_edit_file(char *filename, int editor_mode) {
     int is_modified = 0;
     PatternColorPair patterns[100] = {0};
     int num_patterns = 0;
+    char find_str[CMD_MAX] = {0};
 
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);
@@ -367,6 +368,47 @@ int view_edit_file(char *filename, int editor_mode) {
                 if (btn == 1) {
                     write_file_lines(filename, lines);
                     is_modified = 0;
+                }
+                break;
+            }
+
+            case KEY_F(7): // F7 search
+            case KEY_SHIFT_F7: // Shift+F7 search
+            {
+                int ret;
+                if (strlen(find_str)==0 || input == KEY_F(7)) {
+                    ret = show_dialog("Enter search string:", (char *[]) {"Find", "Cancel", NULL}, 0, find_str, 0, 0);
+                } else ret = 1;
+
+                if (ret == 1) {
+                    if (strlen(find_str) == 0) break;
+                    file_lines *search_line = current_line;
+                    int start_column = absolute_cursor_col + 1;
+                    int found_line = absolute_cursor_row;
+                    int found_column = -1;
+
+                    while (search_line) {
+                        if (search_line->line_length >= strlen(find_str)) {
+                            // Find the find_str in the current line starting from start_column
+                            for (int pos = start_column; pos < search_line->line_length - strlen(find_str); pos++) {
+                                if (strncasecmp(search_line->line + pos, find_str, strlen(find_str)) == 0) {
+                                      found_column = pos;
+                                      search_line = NULL;
+                                      break;
+                                }
+                            }
+                        }
+                        start_column = 0;
+                        if (search_line == NULL) break; // found it, stop
+                        found_line++;
+                        search_line = search_line->next;
+                    }
+                    if (found_column < 0) {
+                        show_dialog("Search string not found", (char *[]) {"OK", NULL}, 0, NULL, 0, 0);
+                    } else {
+                        cursor_row = found_line;
+                        cursor_col = found_column;
+                    }
                 }
                 break;
             }

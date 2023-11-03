@@ -69,6 +69,9 @@ int noesc(int ch) {
                 case 14:
                     ch = KEY_F(4);
                     break;
+                case 31:
+                    ch = KEY_SHIFT_F7;
+                    break;
                 default:
                     break;
             }

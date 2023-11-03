@@ -3,6 +3,7 @@
 #define KEY_ALT_ENTER    0507  /* custom alt-enter key */
 #define KEY_ALT_a        0506  /* custom alt-a key */
 #define KEY_ALT_s        0505  /* custom alt-s key */
+#define KEY_SHIFT_F7     0504  /* custom shift+f7 key */
 
 typedef enum {
     SORT_BY_NAME_ASC = 0,

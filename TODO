@@ -6,3 +6,5 @@ cd in command line
 when dialog is active, accept screen size change and resize properly
 
 search text in viewer, highlight the searched text in both editor and viewer
+
+mark block in editor and copy / move / delete it

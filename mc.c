@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
 
 
     getcwd(left_panel.path, sizeof(left_panel.path));
-    strcpy(right_panel.path,"/root");
+    strcpy(right_panel.path, left_panel.path);
 
     left_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
     right_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;

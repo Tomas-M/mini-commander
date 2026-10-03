@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS += -std=gnu99 -lncurses -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Os -s -g0
-#CFLAGS += -std=gnu99 -lncurses -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -g
+CFLAGS += -std=gnu99 -lncursesw -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Os -s -g0
+#CFLAGS += -std=gnu99 -lncursesw -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -g
 
 mc: *.c *.h Makefile
 	$(CC) mc.c cmd.c operations.c dialog.c filelist.c init.c panel.c ui.c view_edit.c progress.c $(CFLAGS) -o mc

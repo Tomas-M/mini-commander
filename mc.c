@@ -642,7 +642,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Handle scrolling in command line
-        int max_cmd_display = COLS - (strlen(username) + strlen(unameData.nodename) + strlen(active_panel->path) + 6) - 1;
+        int max_cmd_display = COLS - prompt_length - 3;
         if (cursor_pos - cmd_offset >= max_cmd_display) {
             cmd_offset++;
         } else if (cursor_pos - cmd_offset < 0 && cmd_offset > 0) {

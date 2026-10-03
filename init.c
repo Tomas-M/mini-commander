@@ -8,6 +8,9 @@ SCREEN *screen = NULL;
 void initialize_ncurses() {
     if (screen) return;
 
+    // Decode terminal text using the user's locale without changing date/number formats.
+    setlocale(LC_CTYPE, "");
+
     const char *terms[] = {NULL, "xterm", "xfce", "linux"};
     screen = NULL;
     for (int i = 0; i < 4 && screen == NULL; ++i) {

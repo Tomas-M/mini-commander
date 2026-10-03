@@ -64,12 +64,20 @@ slax.org
 
 Usage:
 
+    # Debian/Ubuntu build dependencies:
+    sudo apt-get install build-essential libncursesw5-dev
+
     make
     ./mc
 
     # Result of compilation is standalone 'mc' binary, it does not need anything else.
     # There is no make install because 'mc' would interfere with midnight commander.
     # So install it manually, for example copy ./mc to your path if you like
+
+Use a UTF-8 terminal and locale to display international file and directory names
+correctly, for example `LC_ALL=C.UTF-8 ./mc`. Both builds use Unicode-capable
+ncurses (`ncursesw`), and panel labels are shortened without splitting UTF-8
+characters. Text editing and input handling are still byte-oriented.
 
 For a small, fully static binary built with musl and ncurses, run
 `sh static/build.sh`. The script downloads its dependencies, builds and packs

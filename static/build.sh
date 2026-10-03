@@ -80,7 +80,7 @@ echo "Building terminal description tools..."
     "$ncurses_source/configure" --prefix="$prefix" \
         --without-shared --without-debug --without-cxx --without-cxx-binding \
         --without-ada --without-tests --without-manpages --without-gpm \
-        --without-dlsym --disable-widec
+        --without-dlsym --enable-widec
     make -j "$jobs" -C include
     make -j "$jobs" -C ncurses
     make -j "$jobs" -C progs tic infocmp
@@ -94,7 +94,7 @@ echo "Building minimal ncurses $ncurses_version with embedded terminal descripti
         --without-shared --without-debug --without-cxx --without-cxx-binding \
         --without-ada --without-tests --without-manpages --without-progs \
         --without-gpm --without-dlsym \
-        --disable-widec --disable-database --disable-db-install \
+        --enable-widec --disable-database --disable-db-install \
         --with-fallbacks=linux,vt100,xterm,xterm-256color,screen,screen-256color,tmux,tmux-256color \
         --with-tic-path="$build_dir/tools/progs/tic" \
         --with-infocmp-path="$build_dir/tools/progs/infocmp"
@@ -111,7 +111,7 @@ echo "Linking Mini Commander..."
     "$CC" $CFLAGS -std=gnu99 -flto -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE \
         -D_FILE_OFFSET_BITS=64 -I"$prefix/include" \
         mc.c cmd.c operations.c dialog.c filelist.c init.c panel.c ui.c view_edit.c progress.c \
-        "$prefix/lib/libncurses.a" $LDFLAGS -o "$build_dir/mc"
+        "$prefix/lib/libncursesw.a" $LDFLAGS -o "$build_dir/mc"
 ) >>build.log 2>&1
 strip --strip-all mc
 

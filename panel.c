@@ -2,17 +2,40 @@
 #include "types.h"
 #include "globals.h"
 
+// Shorten by terminal columns, keeping multibyte characters and their accents intact.
 void shorten(char *name, int width, char *result) {
-    int length = strlen(name);
-    if (length <= width) {
-        strcpy(result, name);
-    } else {
-        int halfWidth = (width - 1) / 2;
-        strncpy(result, name, halfWidth);
-        result[halfWidth] = '~';
-        strncpy(result + halfWidth + 1, name + length - (width - 1 - halfWidth), width - 1 - halfWidth);
-        result[width] = '\0';
+    result[0]='\0';
+    if (width <= 0) return;
+    wchar_t text[CMD_MAX];
+    mbstate_t state={0};
+    size_t count=0;
+    while (*name && count < CMD_MAX - 1) {
+        size_t bytes=mbrtowc(&text[count], name, MB_CUR_MAX, &state);
+        // Invalid filename bytes and control characters get a display-only placeholder.
+        if (bytes == (size_t)-1 || bytes == (size_t)-2) {
+            memset(&state, 0, sizeof(state));
+            text[count]=L'?';
+            bytes=1;
+        }
+        if (wcwidth(text[count]) < 0) text[count]=L'?';
+        name+=bytes;
+        count++;
     }
+    text[count]=L'\0';
+    if (wcswidth(text, count) > width) {
+        size_t left=0, right=count;
+        int left_width=0, right_width=0, half=(width - 1) / 2;
+        while (left < count && left_width + wcwidth(text[left]) <= half)
+            left_width+=wcwidth(text[left++]);
+        while (right > left && right_width + wcwidth(text[right - 1]) <= width - 1 - half)
+            right_width+=wcwidth(text[--right]);
+        // Do not attach a suffix's orphaned combining marks to the truncation marker.
+        while (right < count && wcwidth(text[right]) == 0) right++;
+        memmove(text + left + 1, text + right, (count - right + 1) * sizeof(*text));
+        text[left]=L'~';
+    }
+    wcstombs(result, text, CMD_MAX - 1);
+    result[CMD_MAX - 1]='\0';
 }
 
 int file_has_extension(const char *filename, const char *extensions[]) {
@@ -199,7 +222,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         mvwhline(win, line, 1, ' ', name_width + 1);
         mvwprintw(win, line, 1, "%c", prefix);
 
-        mvwaddnstr(win, line, 2, SHORTEN(current->name, name_width), name_width);
+        mvwaddstr(win, line, 2, SHORTEN(current->name, name_width));
 
         mvwprintw(win, line, width - 7 - 12, "%7s", size_str);
         mvwprintw(win, line, width - 12 + 1, "%12s", date_str);
@@ -217,11 +240,12 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     }
     wattroff(win, A_BOLD);
     mvwprintw(win, 0, 3, " %s ", SHORTEN(panel->path, name_width + 12 + 7 - 2));
+    int title_end=getcurx(win);
 
     // reset color to default
     wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
 
-    mvwhline(win, 0, strlen(panel->path) + 5, '-', width - strlen(panel->path) - 4);
+    mvwhline(win, 0, title_end, '-', width - title_end + 1);
 
     while(line < height - 3) {
         mvwhline(win, line, 1, ' ', name_width + 1);
@@ -237,7 +261,8 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
     } else {
         // print info for active file
-        mvwprintw(win, height - 2, 1, "%-*s", width, SHORTEN(info,width));
+        mvwhline(win, height - 2, 1, ' ', width);
+        mvwaddstr(win, height - 2, 1, SHORTEN(info,width));
     }
 
 

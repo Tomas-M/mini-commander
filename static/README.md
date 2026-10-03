@@ -10,7 +10,8 @@ sh static/build.sh
 The script builds for the native architecture of your Linux GCC toolchain.
 It downloads and builds [musl](https://musl.libc.org/) 1.2.6 and
 [ncurses](https://invisible-island.net/ncurses/) 6.6 locally, links everything
-statically, strips unused code and symbols, and compresses the executable with
+statically with Unicode-capable ncurses (`ncursesw`), strips unused code and
+symbols, and compresses the executable with
 [UPX](https://upx.github.io/) 5.2.1. Downloads have pinned SHA-256 checksums.
 UPX downloads are provided for x86-64, 32-bit x86, and AArch64 hosts.
 
@@ -48,6 +49,8 @@ the unpacked and final sizes.
 ## Running the binary
 
 The binary needs no shared libc/ncurses libraries or external terminfo files.
+Use a UTF-8 terminal and locale (for example `LC_ALL=C.UTF-8 ./static/mc`) to
+display international file and directory names correctly.
 It embeds descriptions for `linux`, `vt100`, `xterm`, `xterm-256color`, `screen`,
 `screen-256color`, `tmux`, and `tmux-256color`. The application's existing
 terminal initialization falls back to `xterm` for unrecognized terminal types.

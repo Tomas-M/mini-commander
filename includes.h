@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
-#include <linux/fs.h>
 #include <ncurses.h>
 #include <pwd.h>
 #include <regex.h>
@@ -22,3 +21,8 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+// Older libc headers expose the rename flags only through Linux headers.
+#ifndef RENAME_NOREPLACE
+#include <linux/fs.h>
+#endif

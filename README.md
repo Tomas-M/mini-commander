@@ -70,3 +70,7 @@ Usage:
     # Result of compilation is standalone 'mc' binary, it does not need anything else.
     # There is no make install because 'mc' would interfere with midnight commander.
     # So install it manually, for example copy ./mc to your path if you like
+
+For a small, fully static binary built with musl and ncurses, run
+`sh static/build.sh`. The script downloads its dependencies, builds and packs
+`static/mc`, and cleans up afterwards. See [static build instructions](static/README.md).

@@ -17,6 +17,8 @@ int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order) {
     switch (sort_order % 6) {  // 6 because there are 6 basic sort types
         case SORT_BY_NAME_ASC:
         case SORT_BY_NAME_DESC:
+            // Keep dot-prefixed names first in both sort directions.
+            if ((a->name[0] == '.') != (b->name[0] == '.')) return a->name[0] == '.' ? -1 : 1;
             result = strcmp(a->name, b->name);
             break;
         case SORT_BY_SIZE_ASC:

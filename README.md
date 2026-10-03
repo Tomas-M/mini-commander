@@ -88,6 +88,6 @@ encodings are not converted automatically. Complex joined emoji sequences are
 not treated as a single character. The main command line and panel quick search
 still use byte-oriented input.
 
-For a small, fully static binary built with musl and ncurses, run
+For a small, fully static 32-bit x86 binary built with musl and ncurses, run
 `sh static/build.sh`. The script downloads its dependencies, builds and packs
 `static/mc`, and cleans up afterwards. See [static build instructions](static/README.md).

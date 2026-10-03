@@ -6,7 +6,7 @@ if [ "$(uname -s)" != Linux ]; then
     echo "Run this script on Linux (or inside WSL)." >&2
     exit 1
 fi
-for tool in gcc make ar ranlib strip readelf curl tar gzip xz sha256sum awk sed; do
+for tool in make curl tar gzip xz sha256sum awk sed; do
     command -v "$tool" >/dev/null || { echo "Missing build tool: $tool" >&2; exit 1; }
 done
 
@@ -20,14 +20,12 @@ case "$pack" in 0|1) ;; *) echo "PACK must be 0 or 1." >&2; exit 1;; esac
 musl_version=1.2.6
 ncurses_version=6.6
 upx_version=5.2.1
-if [ "$pack" = 1 ]; then
-    case "$(uname -m)" in
-        x86_64) upx_arch=amd64; upx_hash=402162aad30af47e60dbd767fb2e64ca394ace9727ba1f40283641f1d1b91657;;
-        i?86) upx_arch=i386; upx_hash=44b505d881337ef17ad03f03fd80f2ecdebc3a36077e1dd260ae1b359c713ba5;;
-        aarch64) upx_arch=arm64; upx_hash=a72d112c5970a904a31da0b9c84f919bc16b9a311787c12245508544a78c7d36;;
-        *) echo "No bundled UPX for this architecture; run with PACK=0." >&2; exit 1;;
-    esac
-fi
+# UPX runs on the build host; the executable it packs is always 32-bit x86.
+case "$(uname -m)" in
+    x86_64) upx_arch=amd64; upx_hash=402162aad30af47e60dbd767fb2e64ca394ace9727ba1f40283641f1d1b91657;;
+    i?86) upx_arch=i386; upx_hash=44b505d881337ef17ad03f03fd80f2ecdebc3a36077e1dd260ae1b359c713ba5;;
+    *) echo "This 32-bit x86 build requires an x86 or x86-64 Linux host." >&2; exit 1;;
+esac
 
 build_dir=$(mktemp -d "$script_dir/.build.XXXXXX")
 # Keep the old binary until every build/verification step succeeds, and clean on failure too.
@@ -45,11 +43,22 @@ download() {
     tar -xf "$archive"
 }
 
-# The current application's --version prints a version but exits with status 1.
+# Verify the target architecture before running both unpacked and packed binaries.
 check_binary() {
+    readelf -h mc >header.txt
+    if ! grep -Eq 'Class:[[:space:]]+ELF32' header.txt || ! grep -Eq 'Machine:[[:space:]]+Intel 80386' header.txt; then
+        echo "The resulting binary is not 32-bit x86." >&2
+        exit 1
+    fi
+    # The application's --version prints a version but exits with status 1.
     ./mc --version >version.txt 2>&1 || test "$?" -eq 1
     grep '^Version ' version.txt
 }
+
+# Use a self-contained 32-bit compiler instead of requiring host GCC multilib packages.
+download "https://musl.cc/i686-linux-musl-native.tgz" \
+    978471bf7b8111dfd8c5559a23ef18b80bcd85936872f00424f1b7a5300580ee
+export PATH="$build_dir/i686-linux-musl-native/bin:$PATH"
 
 download "https://musl.libc.org/releases/musl-$musl_version.tar.gz" \
     d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a
@@ -60,12 +69,13 @@ if [ "$pack" = 1 ]; then
 fi
 
 prefix="$build_dir/local"
-export CFLAGS='-Os -g0 -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables'
-export LDFLAGS='-static -Wl,--gc-sections -Wl,--build-id=none'
-echo "Building musl $musl_version..."
+export CFLAGS='-m32 -march=i686 -Os -g0 -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables'
+export LDFLAGS='-m32 -static -Wl,--gc-sections -Wl,--build-id=none'
+echo "Building 32-bit x86 musl $musl_version..."
 (
     cd "musl-$musl_version"
-    ./configure --prefix="$prefix" --disable-shared --disable-optimize --enable-wrapper=gcc CC=gcc
+    ./configure --prefix="$prefix" --target=i686-linux-musl \
+        --disable-shared --disable-optimize --enable-wrapper=gcc CC=gcc AR=ar RANLIB=ranlib
     make -j "$jobs"
     make install
 ) >build.log 2>&1
@@ -104,7 +114,7 @@ echo "Building minimal ncurses $ncurses_version with embedded terminal descripti
     make -C ncurses install
 ) >>build.log 2>&1
 
-echo "Linking Mini Commander..."
+echo "Linking 32-bit x86 Mini Commander..."
 # Use the normal build's source files, bypassing its optional host UPX step.
 (
     cd "$project_dir"

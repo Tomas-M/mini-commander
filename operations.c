@@ -299,6 +299,14 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                 }
             }
 
+            // Reject identical entries before overwriting or descending into directories.
+            if (target_exists && statbufsrc.st_dev == statbuftgt.st_dev && statbufsrc.st_ino == statbuftgt.st_ino)
+            {
+                errno=EINVAL;
+                snprintf(errmsg, sizeof(errmsg), "Source and target are the same file:\n%s", src);
+                break;
+            }
+
             // source is a regular file
             if (S_ISREG(statbufsrc.st_mode)) {
 
@@ -328,21 +336,24 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                             btn = 1;
                         }
                         if (btn == 1) { // Yes
-                            tgt_fd = open(tgt, O_WRONLY | O_CREAT | O_TRUNC, statbufsrc.st_mode);
+                            tgt_fd = open(tgt, O_WRONLY | O_CREAT, statbufsrc.st_mode);
                             if (tgt_fd == -1) {
                                 close(src_fd);
                                 sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
+                                break;
                             }
                         }
-                        if (btn == 2) { // No
+                        if (btn <= 0 || btn == 2) { // No or cancelled
                             close(src_fd);
                             return OPERATION_SKIP;
                         }
                         if (btn == 4) { // None
+                            close(src_fd);
                             context->confirm_all_no = 1;
                             return OPERATION_SKIP;
                         }
                         if (btn == 5) {
+                            close(src_fd);
                             context->abort = 1;
                             return OPERATION_ABORT;
                         }
@@ -351,6 +362,25 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                         sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
                         break;
                     }
+                }
+
+                // Compare opened files too: the target may be a symlink or change after lstat.
+                struct stat opened_src, opened_tgt;
+                if (fstat(src_fd, &opened_src) != 0 || fstat(tgt_fd, &opened_tgt) != 0)
+                    snprintf(errmsg, sizeof(errmsg), "Cannot stat opened files:\n%s\n%s", src, tgt);
+                else if (opened_src.st_dev == opened_tgt.st_dev && opened_src.st_ino == opened_tgt.st_ino)
+                {
+                    errno=EINVAL;
+                    snprintf(errmsg, sizeof(errmsg), "Source and target are the same file:\n%s", src);
+                }
+                else if (ftruncate(tgt_fd, 0) != 0)
+                    snprintf(errmsg, sizeof(errmsg), "Cannot truncate target file:\n%s", tgt);
+
+                if (errmsg[0])
+                {
+                    close(src_fd);
+                    close(tgt_fd);
+                    break;
                 }
 
                 char buffer[16384];

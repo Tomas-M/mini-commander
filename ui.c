@@ -114,6 +114,14 @@ int read_text_key(WINDOW *win, char *text)
     return 0;
 }
 
+// Hide the cursor during changed output, then show it only at its final position.
+void refresh_screen(int cursor_visibility)
+{
+    if (is_wintouched(newscr)) curs_set(0);
+    doupdate();
+    curs_set(cursor_visibility);
+}
+
 void draw_buttons(int maxY, int maxX) {
     move(maxY - 1, 0);
     clrtoeol();
@@ -149,8 +157,8 @@ void draw_buttons(int maxY, int maxX) {
 }
 
 void draw_windows(int maxY, int maxX) {
-    // Refresh stdscr to ensure it's updated
-    refresh();
+    // Stage the background before the panel windows.
+    wnoutrefresh(stdscr);
 
     // Calculate window dimensions
     int winHeight = maxY - 2;
@@ -178,7 +186,7 @@ void draw_windows(int maxY, int maxX) {
     wborder(win1, '|', '|', '-', '-', '+', '+', '+', '+');
     wborder(win2, '|', '|', '-', '-', '+', '+', '+', '+');
 
-    // Refresh windows to make borders visible
-    wrefresh(win1);
-    wrefresh(win2);
+    // Stage borders for the next complete screen update.
+    wnoutrefresh(win1);
+    wnoutrefresh(win2);
 }

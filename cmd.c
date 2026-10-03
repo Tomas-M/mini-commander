@@ -32,7 +32,6 @@ int execute_file(const char *filename)
 void cursor_to_cmd()
 {
     move(LINES-2, prompt_length+text_column(cmd, cursor_pos)-cmd_offset);
-    curs_set(1);
 }
 
 // Keep the prompt and command on one row, scrolling in terminal columns.
@@ -52,6 +51,6 @@ void update_cmd()
     if (column < cmd_offset) cmd_offset=column;
     draw_text(stdscr, LINES-2, prompt_length, cmd, cmd_offset, width);
     cursor_to_cmd();
-    refresh();
+    wnoutrefresh(stdscr);
 }
 

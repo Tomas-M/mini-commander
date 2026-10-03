@@ -279,7 +279,6 @@ int view_edit_file(char *filename, int editor_mode) {
 
     werase(content_win); // Clear the window
     wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE)); // Set the background color
-    wrefresh(content_win); // Refresh the window to apply the changes
     wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
 
     // Build the linked list of line pointers
@@ -388,10 +387,9 @@ int view_edit_file(char *filename, int editor_mode) {
             mvwprintw(toprow_win, 0, max_x-width, "        %d/%lld   %lld%%", last, (long long)num_lines, (long long)(100*last/num_lines));
         }
         wnoutrefresh(toprow_win);
-        curs_set(editor_mode);
         if (editor_mode) wmove(content_win, cursor_row-screen_start_line, column-screen_start_col);
         wnoutrefresh(content_win);
-        doupdate();
+        refresh_screen(editor_mode);
 
         char input_text[MB_LEN_MAX+1];
         int input=read_text_key(content_win, input_text);
@@ -636,7 +634,6 @@ close_editor:
     delwin(content_win);
     free_file_lines(lines);
     free_pattern_regexes(patterns, num_patterns);
-    curs_set(1);
     return 0;
 }
 

@@ -99,5 +99,4 @@ void redraw_ui() {
    draw_windows(maxY, maxX);
    draw_buttons(maxY, maxX);
    update_cmd();
-   refresh();
 }

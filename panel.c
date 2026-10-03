@@ -278,8 +278,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     if (panel->num_selected_files > 0) mvwprintw(win, height - 3, width - strlen(info) - 3, "%s", info);
     wattroff(win, A_BOLD);
 
-    wrefresh(win);
-    cursor_to_cmd();
+    wnoutrefresh(win);
 }
 
 

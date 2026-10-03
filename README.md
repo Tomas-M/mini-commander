@@ -17,6 +17,50 @@ of Mini Commander is GNU GPL v3.
 Tomas M
 slax.org
 
+## Features
+
+- **Built-in viewer and editor:** open files with `F3` or edit them with `F4`,
+  without launching an external program. Save in the editor with `F2`.
+- **Syntax highlighting:** basic highlighting for C source and headers (`.c`,
+  `.h`) and shell scripts (`.sh`). Files starting with `#!/` also receive shell
+  highlighting, even without an extension.
+- **See invisible characters:** tabs have visible markers, and the editor marks
+  control characters. Its status line shows the line, column, byte position,
+  file size, and numeric value of the byte under the cursor.
+- **Editor save protection:** prompts before closing unsaved changes, preserves
+  file ownership and permissions, and edits through symbolic links while keeping
+  the links intact.
+- **Two independent panels:** switch with `Tab`. Each panel has its own sorting
+  options (`F2`): name, size, or modification time, in either direction, with
+  directories first or mixed with files.
+- **Batch file operations:** mark items with `Insert`, then copy (`F5`),
+  move/rename within the same filesystem (`F6`), or delete (`F8`). Copying and
+  deleting directories includes their contents.
+- **Create nested directories:** `F7` accepts a path such as `projects/demo/src`
+  and creates missing parent directories too.
+- **Copy progress and controls:** see progress for the current file and the
+  whole operation, skip a file, or abort. Error dialogs offer retry and skip
+  options; overwrite prompts can apply a choice to the remaining files.
+- **Symbolic links and file colors:** link targets are displayed and broken
+  links are marked. Executables, selected archive formats, and source files
+  have distinct colors. Copying a symbolic link copies the link itself.
+- **Mouse navigation:** select items, double-click to open directories or run
+  executables, and scroll with the wheel in supported terminals.
+- **Monochrome mode:** run `./mc -b` or `./mc --nocolor` to disable colors.
+
+### Less obvious shortcuts
+
+| Shortcut | Action |
+| --- | --- |
+| `Alt+S`, then type | Jump to a filename by its prefix; press `Alt+S` again while searching for the next match. |
+| `Ctrl+Space` | Calculate the size of the directory under the cursor, including its contents (with no other items selected). |
+| `Alt+Enter` | Insert the filename under the cursor into the command line. |
+| `Alt+A` | Insert the active panel's directory path into the command line. |
+| `Enter` | Execute a typed shell command in the active directory; with an empty command line, open a directory or run an executable. |
+| `Ctrl+O` | Temporarily reveal terminal output; press any key to return to the panels. |
+| `Ctrl+R` or `F9` | Refresh both panels. |
+| `Ctrl+L` | Redraw the screen. |
+
 
 Usage:
 

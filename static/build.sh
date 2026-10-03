@@ -70,7 +70,8 @@ fi
 
 prefix="$build_dir/local"
 export CFLAGS='-m32 -march=i686 -Os -g0 -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables'
-export LDFLAGS='-m32 -static -Wl,--gc-sections -Wl,--build-id=none'
+# The downloaded GCC defaults to PIE, but musl-gcc's startup objects cannot relocate static PIE.
+export LDFLAGS='-m32 -static -no-pie -Wl,--gc-sections -Wl,--build-id=none'
 echo "Building 32-bit x86 musl $musl_version..."
 (
     cd "musl-$musl_version"

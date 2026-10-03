@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <getopt.h>
 #include <locale.h>
+#include <limits.h>
 #include <ncurses.h>
 #include <pwd.h>
 #include <regex.h>
@@ -24,6 +25,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <wchar.h>
+#include <wctype.h>
 
 // Older libc headers expose the rename flags only through Linux headers.
 #ifndef RENAME_NOREPLACE

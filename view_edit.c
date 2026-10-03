@@ -112,7 +112,8 @@ file_lines* read_file_lines(const char *filename, off_t *num_lines, off_t *num_b
     // Handle empty file scenario separately
     if (sb.st_size == 0) {
         head = malloc(sizeof(file_lines));
-        head->line = malloc(0);
+        head->line = malloc(1);
+        close(fd);
         head->line_length = 0;
         head->next = NULL;
         *num_lines = 1;
@@ -122,6 +123,11 @@ file_lines* read_file_lines(const char *filename, off_t *num_lines, off_t *num_b
 
     // Memory map the file
     char *file_in_memory = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (file_in_memory == MAP_FAILED)
+    {
+        close(fd);
+        return NULL;
+    }
 
     char *line_start = file_in_memory;
 
@@ -135,7 +141,7 @@ file_lines* read_file_lines(const char *filename, off_t *num_lines, off_t *num_b
 
             // Allocate memory for the line data and copy it from the mapped memory
             int line_length = current - line_start;
-            char *line_copy = malloc(line_length);
+            char *line_copy = malloc(line_length+1);
             memcpy(line_copy, line_start, line_length);
 
             // Fill in the new node
@@ -180,84 +186,80 @@ void free_pattern_regexes(PatternColorPair* patterns, int num_patterns) {
     }
 }
 
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, PatternColorPair* patterns, int num_patterns) {
-    char *ptr = line->line;
-    int offset = 0;
-    regmatch_t pmatch[1];
-
-    while (offset < line->line_length && offset < current_col) {
-        ptr++;
-        offset++;
-    }
-
-    if (offset < current_col) {
-        wclrtoeol(win);
-    } else {
-        for (int x = 0; x < max_x && offset < line->line_length; x++, ptr++, offset++) {
-
-            int matched = 0;
-            // copy line to temporary buffer for matching, to make sure it is terminated by zero byte even if the original is not
-            int remaining_length = line->line_length - offset;
-            char *temp_str = strndup(ptr, remaining_length);
-
-            for (int i = 0; i < num_patterns; i++) {
-                if (regexec(&patterns[i].regex, temp_str, 1, pmatch, 0) == 0 && pmatch[0].rm_so == 0) {
-                    matched = 1;
-                    wattron(win, patterns[i].color_pair);
-                    if (patterns[i].is_bold) {
-                        wattron(win, A_BOLD);
-                    }
-
-                    for (int j = 0; j < pmatch[0].rm_eo; j++) {
-                        waddch(win, ptr[j]);
-                        if (j < pmatch[0].rm_eo - 1) {
-                            x++;
-                            offset++;
-                        }
-                    }
-
-                    wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-                    wattroff(win, A_BOLD);
-                    ptr += pmatch[0].rm_eo - 1;
-                    break;  // Stop checking other patterns after the first match
+// Render complete UTF-8 cells and clip by columns without wrapping into the next row.
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, PatternColorPair* patterns, int num_patterns)
+{
+    int row=getcury(win), column=0, match_end=0, color=COLOR_PAIR(COLOR_WHITE_ON_BLUE), bold=0;
+    char *text=malloc(line->line_length+1);
+    memcpy(text, line->line, line->line_length);
+    text[line->line_length]='\0';
+    for (int offset=0; offset < line->line_length && column < current_col+max_x;)
+    {
+        wchar_t chars[CCHARW_MAX];
+        int width, bytes=text_cell(text+offset, line->line_length-offset, chars, &width);
+        if (offset >= match_end)
+        {
+            color=COLOR_PAIR(COLOR_WHITE_ON_BLUE);
+            bold=0;
+            regmatch_t match;
+            for (int i=0; i < num_patterns; i++)
+                if (regexec(&patterns[i].regex, text+offset, 1, &match, 0) == 0 && match.rm_so == 0 && match.rm_eo > 0)
+                {
+                    match_end=offset+match.rm_eo;
+                    color=patterns[i].color_pair;
+                    bold=patterns[i].is_bold ? A_BOLD : 0;
+                    break;
                 }
-            }
-
-            free(temp_str);
-            if (matched) continue;
-
-            if (isprint((unsigned char)*ptr)) {
-                waddch(win, *ptr);
-            } else if (*ptr != '\n') {
-                if (*ptr == 9) {
-                    wattron(win, COLOR_PAIR(COLOR_CYAN_ON_BLUE));
-                    waddch(win, '>');
-                    wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-                } else {
-                    if (editor_mode) {
-                        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_RED));
-                        waddch(win, *ptr >= 0 && *ptr < 32 ? '@' + *ptr : '.');
-                        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-                    } else {
-                        waddch(win, '.');
-                    }
-                }
-            }
         }
+        if (column >= current_col && column+width <= current_col+max_x)
+        {
+            int attributes=color|bold;
+            if (chars[0] == L'\t')
+            {
+                chars[0]=L'>';
+                attributes=COLOR_PAIR(COLOR_CYAN_ON_BLUE);
+            }
+            else if (!iswprint(chars[0]))
+            {
+                chars[0]=editor_mode && chars[0] < 32 ? L'@'+chars[0] : L'.';
+                if (editor_mode) attributes=COLOR_PAIR(COLOR_WHITE_ON_RED);
+            }
+            cchar_t cell;
+            setcchar(&cell, chars, attributes & ~A_COLOR, PAIR_NUMBER(attributes), NULL);
+            mvwadd_wchnstr(win, row, column-current_col, &cell, 1);
+        }
+        column+=width;
+        offset+=bytes;
     }
-
-    wrefresh(win);
+    free(text);
 }
 
 
+// Compare decoded characters so case-insensitive search also works with non-ASCII text.
+static int text_matches(const char *text, int length, const char *pattern)
+{
+    int remaining=strlen(pattern);
+    while (remaining)
+    {
+        wchar_t left, right;
+        mbstate_t left_state={0}, right_state={0};
+        size_t left_bytes=mbrtowc(&left, text, length, &left_state);
+        size_t right_bytes=mbrtowc(&right, pattern, remaining, &right_state);
+        if (!left_bytes || left_bytes > (size_t)length || right_bytes > (size_t)remaining) return 0;
+        if (towlower(left) != towlower(right)) return 0;
+        text+=left_bytes;
+        length-=left_bytes;
+        pattern+=right_bytes;
+        remaining-=right_bytes;
+    }
+    return 1;
+}
+
 int view_edit_file(char *filename, int editor_mode) {
-    int input;
     int max_y, max_x;
     int screen_start_line = 0;
-    int screen_start_col = 0; // Add a variable to keep track of the current column offset
+    int screen_start_col = 0;
     int cursor_row = 0;
-    int cursor_col = 0;
-    int skip_refresh = 0;
     int is_modified = 0;
     PatternColorPair patterns[100] = {0};
     int num_patterns = 0;
@@ -273,6 +275,7 @@ int view_edit_file(char *filename, int editor_mode) {
 
     // Create a new window for displaying the file content
     WINDOW *content_win = newwin(max_y - 2, max_x, 1, 0);
+    keypad(content_win, TRUE);
 
     werase(content_win); // Clear the window
     wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE)); // Set the background color
@@ -282,6 +285,13 @@ int view_edit_file(char *filename, int editor_mode) {
     // Build the linked list of line pointers
     off_t num_lines, num_bytes;
     file_lines *lines = read_file_lines(filename, &num_lines, &num_bytes);
+    if (!lines)
+    {
+        delwin(toprow_win);
+        delwin(content_win);
+        show_errormsg(SPRINTF("Cannot open file:\n%s\n%s", filename, strerror(errno)));
+        return -1;
+    }
 
     // Extract file extension
     char *file_type = strrchr(filename, '.');  // find last '.' in filename
@@ -290,28 +300,28 @@ int view_edit_file(char *filename, int editor_mode) {
     {
         // Syntax highlighting for editor mode
         if (file_type && (strcmp(file_type, ".c") == 0 || strcmp(file_type, ".h") == 0)) {
-            patterns[num_patterns++] = (PatternColorPair) {"\".*\"", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"^(#include|#define).*$", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"//.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"\\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|asm|inline|wchar_t|[.][.][.])\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"!|%|==|!=|&&|[*]|->|[+]|-|[|][|]|=|>|<|/", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"[(){},:?]|\\[|\\]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 0, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"[;&^~|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, NULL};
+            patterns[num_patterns++] = (PatternColorPair) {"\".*\"", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"^(#include|#define).*$", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"//.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"\\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|asm|inline|wchar_t|[.][.][.])\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"!|%|==|!=|&&|[*]|->|[+]|-|[|][|]|=|>|<|/", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"[(){},:?]|\\[|\\]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 0, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"[;&^~|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, {0}};
         }
 
         if ((file_type && (strcmp(file_type, ".sh") == 0)) || (lines != NULL && lines->line_length > 3 && strncmp(lines->line, "#!/", 3) == 0)) {
-            patterns[num_patterns++] = (PatternColorPair) {"^#!/.*", COLOR_PAIR(COLOR_CYAN_ON_BLACK), 0, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"#.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"[;{}]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$[(].*[)]|\\$[{].*[}]", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$[*]|\\$@|\\$#|\\$[?]|\\$-|\\$\\$|\\$!|\\$_", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"2>&1|1>&2|2>|1>", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$[0123456789]", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$[a-zA-Z0-9_]+", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"\\bfunction\\b.*[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"[a-zA-Z0-9_]+[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, NULL};
-            patterns[num_patterns++] = (PatternColorPair) {"\\b(break|case|clear|continue|declare|done|do|echo|elif|else|esac|exit|export|fi|for|getopts|if|in|read|return|select|set|shift|source|then|trap|until|unset|wait|while)\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, NULL};
+            patterns[num_patterns++] = (PatternColorPair) {"^#!/.*", COLOR_PAIR(COLOR_CYAN_ON_BLACK), 0, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"#.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"[;{}]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"\\$[(].*[)]|\\$[{].*[}]", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"\\$[*]|\\$@|\\$#|\\$[?]|\\$-|\\$\\$|\\$!|\\$_", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"2>&1|1>&2|2>|1>", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"\\$[0123456789]", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"\\$[a-zA-Z0-9_]+", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"\\$", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"\\bfunction\\b.*[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"[a-zA-Z0-9_]+[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, {0}};
+            patterns[num_patterns++] = (PatternColorPair) {"\\b(break|case|clear|continue|declare|done|do|echo|elif|else|esac|exit|export|fi|for|getopts|if|in|read|return|select|set|shift|source|then|trap|until|unset|wait|while)\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, {0}};
         }
 
         for (int i = 0; i < num_patterns; i++) {
@@ -319,511 +329,315 @@ int view_edit_file(char *filename, int editor_mode) {
     }
     }
 
-    // Initial display
-    file_lines *current = lines;
-    for (int i = 0; i < max_y - 2 && current != NULL; i++) {
-        wmove(content_win, i, 0);
-        display_line(content_win, current, max_x, screen_start_col, editor_mode, patterns, num_patterns);
-        current = current->next;
-    }
-
-    current = lines;
-
-    // Handle user input for scrolling
-    while(1) {
-
-        int seek = 0;
-
-        // globally get current line, since it may be used on many places later
-        file_lines *current_line = lines;
-        for (int i = 0; i < screen_start_line + cursor_row; i++) {
-            seek += current_line->line_length + 1;
-            current_line = current_line->next;
+    // Byte positions identify edits; terminal columns are derived only for display/navigation.
+    int cursor_byte=0;
+    while (1)
+    {
+        file_lines *current_line=lines;
+        off_t seek=0;
+        for (int i=0; i < cursor_row; i++)
+        {
+            seek+=current_line->line_length+1;
+            current_line=current_line->next;
+        }
+        int column=text_column(current_line->line, cursor_byte);
+        // Insertions and line joins can attach existing combining marks to the preceding character.
+        cursor_byte=text_offset(current_line->line, current_line->line_length, column);
+        if (editor_mode)
+        {
+            if (cursor_row < screen_start_line) screen_start_line=cursor_row;
+            if (cursor_row >= screen_start_line+max_y-2) screen_start_line=cursor_row-max_y+3;
+            if (column < screen_start_col) screen_start_col=column;
+            wchar_t chars[CCHARW_MAX];
+            int cursor_width=1;
+            if (cursor_byte < current_line->line_length)
+                text_cell(current_line->line+cursor_byte, current_line->line_length-cursor_byte, chars, &cursor_width);
+            if (column+cursor_width > screen_start_col+max_x) screen_start_col=column+cursor_width-max_x;
         }
 
-        int shown_line_max = screen_start_line + max_y - 2;
-        if (shown_line_max > num_lines) shown_line_max = num_lines;
-
-        int absolute_cursor_col = cursor_col + screen_start_col;
-        int absolute_cursor_row = cursor_row + screen_start_line;
-        char charcode[10] = {0};
-
-        // Initial top row stats
-
-        if (editor_mode) {
-            if (absolute_cursor_col < current_line->line_length) {
-                unsigned char current_char = current_line->line[absolute_cursor_col];
-                sprintf(charcode, "#%d", (int)current_char);
-            } else if (seek + absolute_cursor_col >= num_bytes) {
-                sprintf(charcode, "<EOF>");
-            } else sprintf(charcode, "#10");
-            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3lld] *(%4d/%lldb)   %s     ", filename, is_modified ? "M" : "-", absolute_cursor_col, screen_start_line + 1, cursor_row, absolute_cursor_row + 1, num_lines, seek + absolute_cursor_col, num_bytes, charcode);
-        } else {
+        werase(content_win);
+        file_lines *shown=lines;
+        for (int i=0; i < screen_start_line; i++) shown=shown->next;
+        int shown_rows=0;
+        for (; shown && shown_rows < max_y-2; shown_rows++, shown=shown->next)
+        {
+            wmove(content_win, shown_rows, 0);
+            display_line(content_win, shown, max_x, screen_start_col, editor_mode, patterns, num_patterns);
+        }
+        werase(toprow_win);
+        if (editor_mode)
+        {
+            char charcode[16];
+            if (cursor_byte < current_line->line_length)
+            {
+                wchar_t chars[CCHARW_MAX];
+                int width;
+                text_cell(current_line->line+cursor_byte, current_line->line_length-cursor_byte, chars, &width);
+                snprintf(charcode, sizeof(charcode), "U+%04X", (unsigned int)chars[0]);
+            }
+            else snprintf(charcode, sizeof(charcode), "%s", current_line->next ? "#10" : "<EOF>");
+            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3lld] *(%4lld/%lldb)   %s",
+                filename, is_modified ? "M" : "-", column, screen_start_line+1, cursor_row-screen_start_line,
+                cursor_row+1, (long long)num_lines, (long long)(seek+cursor_byte), (long long)num_bytes, charcode);
+        }
+        else
+        {
+            int last=screen_start_line+shown_rows;
             mvwprintw(toprow_win, 0, 0, "%s", filename);
-            int num_width = snprintf(NULL, 0, "        %d/%lld   %lld%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
-            mvwprintw(toprow_win, 0, max_x - num_width, "        %d/%lld   %lld%%", shown_line_max, num_lines, num_lines > 0 ? 100 * shown_line_max / num_lines : 100);
+            int width=snprintf(NULL, 0, "        %d/%lld   %lld%%", last, (long long)num_lines, (long long)(100*last/num_lines));
+            mvwprintw(toprow_win, 0, max_x-width, "        %d/%lld   %lld%%", last, (long long)num_lines, (long long)(100*last/num_lines));
         }
+        wnoutrefresh(toprow_win);
+        curs_set(editor_mode);
+        if (editor_mode) wmove(content_win, cursor_row-screen_start_line, column-screen_start_col);
+        wnoutrefresh(content_win);
+        doupdate();
 
-        wrefresh(toprow_win);
-
-        if (editor_mode) {
-            curs_set(1); // Make cursor visible
-        } else {
-            curs_set(0); // Hide cursor
-        }
-
-        move(cursor_row + 1, cursor_col);
-        skip_refresh = 0;
-
-        input = noesc(getch());
-        switch (input) {
+        char input_text[MB_LEN_MAX+1];
+        int input=read_text_key(content_win, input_text);
+        int target_column=-1;
+        switch (input)
+        {
             case KEY_F(3):
-                if (editor_mode) { 
-                    // TODO: perhaps some Mark function
-                } else {
-                    delwin(content_win);
-                    free_file_lines(lines);
-                    free_pattern_regexes(patterns, num_patterns);
-                    curs_set(1);
-                    return 0;
-                }
-                break;
+                if (editor_mode) break;
+                goto close_editor;
             case KEY_F(10):
             case 27:
-            {
-                if (is_modified) {
-                    int btn = show_dialog(SPRINTF("File %s was modified.\nSave before close?", filename), (char *[]) {"Yes", "No", "Cancel", NULL}, 2, NULL, 0, 0);
-                    if (btn == 1) {
-                        if (write_file_lines(filename, lines) != 0)
-                        {
-                            show_errormsg(SPRINTF("Cannot save file:\n%s\n%s", filename, strerror(errno)));
-                            break;
-                        }
-                    }
-                    if (btn != 1 && btn != 2) { // continue editing
+                if (is_modified)
+                {
+                    int button=show_dialog(SPRINTF("File %s was modified.\nSave before close?", filename), (char *[]) {"Yes", "No", "Cancel", NULL}, 2, NULL, 0, 0);
+                    if (button != 1 && button != 2) break;
+                    if (button == 1 && write_file_lines(filename, lines) != 0)
+                    {
+                        show_errormsg(SPRINTF("Cannot save file:\n%s\n%s", filename, strerror(errno)));
                         break;
                     }
                 }
-                delwin(content_win);
-                free_file_lines(lines);
-                free_pattern_regexes(patterns, num_patterns);
-                curs_set(1);
-                return 0;
-            }
+                goto close_editor;
             case KEY_F(2):
-            {
-                int btn = show_dialog(SPRINTF("Confirm save file:\n%s", filename), (char *[]) {"Save", "Cancel", NULL}, 0, NULL, 0, 0);
-                if (btn == 1) {
+                if (editor_mode && show_dialog(SPRINTF("Confirm save file:\n%s", filename), (char *[]) {"Save", "Cancel", NULL}, 0, NULL, 0, 0) == 1)
+                {
                     if (write_file_lines(filename, lines) != 0)
                         show_errormsg(SPRINTF("Cannot save file:\n%s\n%s", filename, strerror(errno)));
                     else is_modified=0;
                 }
                 break;
-            }
-
-            case KEY_F(7): // F7 search
-            case KEY_SHIFT_F7: // Shift+F7 search
+            case KEY_F(7):
+            case KEY_F(19):
+            case KEY_SHIFT_F7:
             {
-                int ret;
-                if (strlen(find_str)==0 || input == KEY_F(7)) {
-                    ret = show_dialog("Enter search string:", (char *[]) {"Find", "Cancel", NULL}, 0, find_str, 0, 0);
-                } else ret = 1;
-
-                if (ret == 1) {
-                    if (strlen(find_str) == 0) break;
-                    file_lines *search_line = current_line;
-                    int start_column = absolute_cursor_col + 1;
-                    int found_line = absolute_cursor_row;
-                    int found_column = -1;
-
-                    while (search_line) {
-                        if (search_line->line_length >= strlen(find_str)) {
-                            // Find the find_str in the current line starting from start_column
-                            for (int pos = start_column; pos < search_line->line_length - strlen(find_str); pos++) {
-                                if (strncasecmp(search_line->line + pos, find_str, strlen(find_str)) == 0) {
-                                      found_column = pos;
-                                      search_line = NULL;
-                                      break;
-                                }
-                            }
+                if ((!find_str[0] || input == KEY_F(7)) && show_dialog("Enter search string:", (char *[]) {"Find", "Cancel", NULL}, 0, find_str, 0, 0) != 1) break;
+                if (!find_str[0]) break;
+                file_lines *search_line=current_line;
+                int found_row=cursor_row, offset=cursor_byte, found=-1;
+                wchar_t chars[CCHARW_MAX];
+                int width;
+                if (offset < search_line->line_length)
+                    offset+=text_cell(search_line->line+offset, search_line->line_length-offset, chars, &width);
+                else offset++;
+                while (search_line)
+                {
+                    for (; offset < search_line->line_length; offset+=text_cell(search_line->line+offset, search_line->line_length-offset, chars, &width))
+                        if (text_matches(search_line->line+offset, search_line->line_length-offset, find_str))
+                        {
+                            found=offset;
+                            break;
                         }
-                        start_column = 0;
-                        if (search_line == NULL) break; // found it, stop
-                        found_line++;
-                        search_line = search_line->next;
-                    }
-                    if (found_column < 0) {
-                        show_dialog("Search string not found", (char *[]) {"OK", NULL}, 0, NULL, 0, 0);
-                    } else {
-                        cursor_row = found_line;
-                        cursor_col = found_column;
-                    }
+                    if (found >= 0) break;
+                    search_line=search_line->next;
+                    found_row++;
+                    offset=0;
+                }
+                if (found < 0) show_dialog("Search string not found", (char *[]) {"OK", NULL}, 0, NULL, 0, 0);
+                else
+                {
+                    cursor_row=found_row;
+                    cursor_byte=found;
+                    screen_start_line=found_row;
+                    screen_start_col=text_column(search_line->line, found);
                 }
                 break;
             }
-
             case KEY_UP:
-                if (editor_mode && cursor_row > 0) {
-                    cursor_row--;
-                    // TODO fix cursor_col position
-                    skip_refresh = 1;
-                } else {
-                    if (screen_start_line > 0) {
-                        screen_start_line--;
-                    }
-                }
-                break;
             case KEY_DOWN:
-                if (editor_mode && cursor_row < max_y - 3 && absolute_cursor_row < num_lines - 1) {
-                    cursor_row++;
-                    skip_refresh = 1;
-                } else {
-                    if (screen_start_line < num_lines - (max_y - 2)) {
-                        screen_start_line++;
-                    }
-                }
-                break;
-
-            case KEY_LEFT:
-                if (editor_mode) {
-                    if (cursor_col > 0) {
-                        cursor_col--;
-                        skip_refresh = 1;
-                    } else if (screen_start_col > 0) {
-                        screen_start_col--;
-                    } else if (cursor_row > 0) {
-                        cursor_row--;
-                        file_lines *prev_line = lines;
-                        for (int i = 0; i < screen_start_line + cursor_row; i++) {
-                            prev_line = prev_line->next;
-                        }
-                        cursor_col = prev_line->line_length;
-                        if (prev_line->line[prev_line->line_length - 1] == '\n') cursor_col--;
-                        if (cursor_col < 0) cursor_col = 0;
-                        if (cursor_col >= max_x) {
-                            screen_start_col = cursor_col - max_x + 1;
-                            cursor_col = max_x - 1;
-                        } else {
-                            screen_start_col = 0;
-                        }
-                    } else if (screen_start_line > 0) {
-                        screen_start_line--;
-                        file_lines *prev_line = lines;
-                        for (int i = 0; i < screen_start_line; i++) {
-                            prev_line = prev_line->next;
-                        }
-                        cursor_col = prev_line->line_length;
-                        if (prev_line->line[prev_line->line_length - 1] == '\n') cursor_col--;
-                        if (cursor_col < 0) cursor_col = 0;
-                        if (cursor_col >= max_x) {
-                            screen_start_col = cursor_col - max_x + 1;
-                            cursor_col = max_x - 1;
-                        } else {
-                            screen_start_col = 0;
-                        }
-                    }
-
-                } else {
-                    if (screen_start_col > 0) screen_start_col -= 10;
-                    if (screen_start_col < 0) screen_start_col = 0;
-                }
-                break;
-
-            case KEY_RIGHT:
-                if (editor_mode) {
-                    if (absolute_cursor_col < current_line->line_length) {
-                        if (cursor_col < max_x - 1) {
-                            cursor_col++;
-                        } else {
-                            screen_start_col++;
-                        }
-                    } else if (current_line->next) {
-                        cursor_col = 0;
-                        if (cursor_row < max_y - 3) {
-                            cursor_row++;
-                        } else {
-                            screen_start_line++;
-                        }
-                        screen_start_col = 0; // Reset horizontal scrolling when moving to a new line
-                    }
-                } else {
-                    screen_start_col += 10;
-                }
-                break;
-
-            case KEY_PPAGE: // PgUp
-                if (editor_mode && screen_start_line == 0) {
-                    cursor_row = 0;  // Move cursor to the first line
-                }
-                screen_start_line -= max_y - 2;
-                if (screen_start_line < 0) screen_start_line = 0;
-                break;
-
-            case KEY_NPAGE: // PgDn
-                if (editor_mode && screen_start_line + max_y > num_lines - 2) {
-                    cursor_row = num_lines - screen_start_line - 1;  // Move cursor to the last line
-                    if (cursor_row > max_y - 3) cursor_row = max_y - 3;
-                }
-
-                screen_start_line += max_y - 2;
-                if (screen_start_line > num_lines - (max_y - 2)) {
-                    screen_start_line = num_lines - (max_y - 2);
-                }
-                if (screen_start_line < 0) screen_start_line = 0;
-
-                break;
-
-            case KEY_HOME: // Handle Home key
-                if (editor_mode) {
-                    cursor_col = 0;
-                    screen_start_col = 0;
-                } else {
-                    screen_start_line = 0;
-                }
-                break;
-
-            case KEY_END: // Handle End key
-                if (editor_mode) {
-                    cursor_col = current_line->line_length;
-                    if (cursor_col >= max_x) {
-                        screen_start_col = cursor_col - max_x + 1;
-                        cursor_col = max_x - 1;
-                    }
-                } else {
-                    screen_start_line = num_lines - (max_y - 2);
-                    if (screen_start_line < 0) screen_start_line = 0;
-                }
-                break;
-
-            case KEY_RESIZE: // Handle screen resize
-                getmaxyx(stdscr, max_y, max_x); // Update max_y and max_x
-                wclear(content_win); // Clear the old window
-                wrefresh(content_win);
-                delwin(content_win); // Delete the old window
-                content_win = newwin(max_y - 2, max_x, 1, 0); // Create a new window with the new dimensions
-                wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-                wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-                break;
-
-            case '\n': // Enter key
+            case KEY_PPAGE:
+            case KEY_NPAGE:
             {
-                if (editor_mode) {
-                    is_modified = 1;
-                    // Split the current line into two at the cursor's position
-                    char *first_half = malloc(absolute_cursor_col + 1);
-                    char *second_half = malloc(current_line->line_length - absolute_cursor_col + 1);
-
-                    memcpy(first_half, current_line->line, absolute_cursor_col);
-                    first_half[absolute_cursor_col] = '\0';
-
-                    memcpy(second_half, &current_line->line[absolute_cursor_col], current_line->line_length - absolute_cursor_col);
-                    second_half[current_line->line_length - absolute_cursor_col] = '\0';
-
-                    // Free the original line memory
-                    free(current_line->line);
-
-                    // Adjust the linked list to accommodate the new line
-                    file_lines *new_line = malloc(sizeof(file_lines));
-                    new_line->line = second_half;
-                    new_line->line_length = current_line->line_length - absolute_cursor_col;
-                    new_line->next = current_line->next;
-
-                    current_line->next = new_line;
-                    current_line->line = first_half;
-                    current_line->line_length = absolute_cursor_col;
-
+                int step=(input == KEY_PPAGE || input == KEY_NPAGE) ? max_y-2 : 1;
+                if (input == KEY_UP || input == KEY_PPAGE) step=-step;
+                if (editor_mode)
+                {
+                    cursor_row+=step;
+                    if (cursor_row < 0) cursor_row=0;
+                    if (cursor_row >= num_lines) cursor_row=num_lines-1;
+                    target_column=column;
+                }
+                else
+                {
+                    screen_start_line+=step;
+                    int last=num_lines > max_y-2 ? num_lines-max_y+2 : 0;
+                    if (screen_start_line > last) screen_start_line=last;
+                    if (screen_start_line < 0) screen_start_line=0;
+                    cursor_row=screen_start_line;
+                    cursor_byte=0;
+                }
+                break;
+            }
+            case KEY_LEFT:
+                if (!editor_mode)
+                {
+                    screen_start_col=screen_start_col > 10 ? screen_start_col-10 : 0;
+                    break;
+                }
+                if (cursor_byte) cursor_byte=text_previous(current_line->line, cursor_byte);
+                else if (cursor_row > 0)
+                {
+                    cursor_row--;
+                    target_column=INT_MAX;
+                }
+                break;
+            case KEY_RIGHT:
+                if (!editor_mode) screen_start_col+=10;
+                else if (cursor_byte < current_line->line_length)
+                {
+                    wchar_t chars[CCHARW_MAX];
+                    int width;
+                    cursor_byte+=text_cell(current_line->line+cursor_byte, current_line->line_length-cursor_byte, chars, &width);
+                }
+                else if (current_line->next)
+                {
+                    cursor_row++;
+                    cursor_byte=0;
+                }
+                break;
+            case KEY_HOME:
+                if (editor_mode) cursor_byte=0;
+                else screen_start_line=cursor_row=cursor_byte=0;
+                break;
+            case KEY_END:
+                if (editor_mode) cursor_byte=current_line->line_length;
+                else
+                {
+                    screen_start_line=num_lines > max_y-2 ? num_lines-max_y+2 : 0;
+                    cursor_row=screen_start_line;
+                    cursor_byte=0;
+                }
+                break;
+            case KEY_RESIZE:
+                getmaxyx(stdscr, max_y, max_x);
+                wresize(toprow_win, 1, max_x);
+                wresize(content_win, max_y-2, max_x);
+                break;
+            case '\n':
+            case '\r':
+                if (editor_mode)
+                {
+                    file_lines *next=malloc(sizeof(*next));
+                    next->line_length=current_line->line_length-cursor_byte;
+                    next->line=malloc(next->line_length+1);
+                    memcpy(next->line, current_line->line+cursor_byte, next->line_length);
+                    next->next=current_line->next;
+                    current_line->next=next;
+                    current_line->line_length=cursor_byte;
+                    cursor_row++;
+                    cursor_byte=0;
                     num_lines++;
                     num_bytes++;
-
-                    // Move the cursor to the beginning of the next line
-                    if (cursor_row < max_y - 3) {
-                        cursor_row++;
-                        cursor_col = 0;
-                        screen_start_col = 0; // Reset horizontal scrolling when moving to a new line
-                    } else {
-                        screen_start_line++;
-                        cursor_col = 0;
-                        screen_start_col = 0; // Reset horizontal scrolling when moving to a new line
-                    }
+                    is_modified=1;
                 }
-            }
-            break;
-
-
-            case KEY_BACKSPACE: // Handle Backspace key
+                break;
+            case KEY_BACKSPACE:
+                if (!editor_mode) break;
+                if (cursor_byte > 0)
+                {
+                    int previous=text_previous(current_line->line, cursor_byte);
+                    memmove(current_line->line+previous, current_line->line+cursor_byte, current_line->line_length-cursor_byte);
+                    current_line->line_length-=cursor_byte-previous;
+                    num_bytes-=cursor_byte-previous;
+                    cursor_byte=previous;
+                    is_modified=1;
+                }
+                else if (cursor_row > 0)
+                {
+                    file_lines *previous=lines;
+                    for (int i=0; i < cursor_row-1; i++) previous=previous->next;
+                    cursor_byte=previous->line_length;
+                    previous->line=realloc(previous->line, cursor_byte+current_line->line_length+1);
+                    memcpy(previous->line+cursor_byte, current_line->line, current_line->line_length);
+                    previous->line_length+=current_line->line_length;
+                    previous->next=current_line->next;
+                    free(current_line->line);
+                    free(current_line);
+                    cursor_row--;
+                    num_lines--;
+                    num_bytes--;
+                    is_modified=1;
+                }
+                break;
+            case KEY_DC:
+                if (!editor_mode) break;
+                if (cursor_byte < current_line->line_length)
+                {
+                    wchar_t chars[CCHARW_MAX];
+                    int width, bytes=text_cell(current_line->line+cursor_byte, current_line->line_length-cursor_byte, chars, &width);
+                    memmove(current_line->line+cursor_byte, current_line->line+cursor_byte+bytes, current_line->line_length-cursor_byte-bytes);
+                    current_line->line_length-=bytes;
+                    num_bytes-=bytes;
+                    is_modified=1;
+                }
+                else if (current_line->next)
+                {
+                    file_lines *next=current_line->next;
+                    current_line->line=realloc(current_line->line, current_line->line_length+next->line_length+1);
+                    memcpy(current_line->line+current_line->line_length, next->line, next->line_length);
+                    current_line->line_length+=next->line_length;
+                    current_line->next=next->next;
+                    free(next->line);
+                    free(next);
+                    num_lines--;
+                    num_bytes--;
+                    is_modified=1;
+                }
+                break;
+            case KEY_MOUSE:
             {
-                if (editor_mode) {
-                    if (absolute_cursor_col > 0) {
-                        is_modified=1;
-                        // Remove the character to the left of the cursor
-                        memmove(&current_line->line[absolute_cursor_col - 1], &current_line->line[absolute_cursor_col], current_line->line_length - absolute_cursor_col);
-                        current_line->line_length--;
-                        char *new_line = realloc(current_line->line, current_line->line_length);
-                        current_line->line = new_line;
-                        num_bytes--;
-
-                        // Move the cursor to the left
-                        if (cursor_col > 0) {
-                            cursor_col--;
-                        } else {
-                            screen_start_col--;
-                        }
-                    } else if (cursor_row > 0) {
-                        is_modified=1;
-                        // Merge the current line with the previous line
-                        file_lines *prev_line = lines;
-                        for (int i = 0; i < screen_start_line + cursor_row - 1; i++) {
-                            prev_line = prev_line->next;
-                        }
-
-                        int original_prev_line_length = prev_line->line_length; // Store the original length before the merge
-
-                        int new_length = prev_line->line_length + current_line->line_length;
-                        char *merged_line = realloc(prev_line->line, new_length);
-                        memcpy(&merged_line[prev_line->line_length], current_line->line, current_line->line_length);
-
-                        prev_line->line = merged_line;
-                        prev_line->line_length = new_length;
-                        prev_line->next = current_line->next;
-                        free(current_line->line);
-                        free(current_line);
-                        current_line = prev_line;
-                        num_lines--;
-                        num_bytes--;
-
-                        cursor_row--;
-                        cursor_col = original_prev_line_length - screen_start_col;
-                    }
+                MEVENT event;
+                if (!editor_mode || getmouse(&event) != OK) break;
+                if (event.y < 1 || event.y >= max_y-1 || event.x < 0 || event.x >= max_x) break;
+                cursor_row=screen_start_line+event.y-1;
+                if (cursor_row >= num_lines) cursor_row=num_lines-1;
+                target_column=screen_start_col+event.x;
+                break;
+            }
+            default:
+                if (input == '\t') strcpy(input_text, "\t");
+                if (editor_mode && input_text[0])
+                {
+                    int bytes=strlen(input_text);
+                    current_line->line=realloc(current_line->line, current_line->line_length+bytes+1);
+                    memmove(current_line->line+cursor_byte+bytes, current_line->line+cursor_byte, current_line->line_length-cursor_byte);
+                    memcpy(current_line->line+cursor_byte, input_text, bytes);
+                    current_line->line_length+=bytes;
+                    cursor_byte+=bytes;
+                    num_bytes+=bytes;
+                    is_modified=1;
                 }
-            }
-            break;
-
-            case KEY_DC: // Handle Delete key
-            {
-                if (editor_mode) {
-                    if (absolute_cursor_col < current_line->line_length) {
-                        is_modified=1;
-                        // Remove the character at the cursor position
-                        memmove(&current_line->line[absolute_cursor_col], &current_line->line[absolute_cursor_col + 1], current_line->line_length - absolute_cursor_col - 1);
-                        current_line->line_length--;
-                        char *new_line = realloc(current_line->line, current_line->line_length);
-                        current_line->line = new_line;
-                        num_bytes--;
-                    } else if (current_line->next) {
-                        is_modified=1;
-                        // Merge the current line with the next line
-                        int new_length = current_line->line_length + current_line->next->line_length;
-                        char *merged_line = realloc(current_line->line, new_length);
-                        memcpy(&merged_line[current_line->line_length], current_line->next->line, current_line->next->line_length);
-                        current_line->line = merged_line;
-                        current_line->line_length = new_length;
-                        file_lines *temp = current_line->next;
-                        current_line->next = temp->next;
-                        free(temp->line);
-                        free(temp);
-                        num_lines--;
-                        num_bytes--;
-                    }
-                }
-            }
-            break;
+                break;
         }
-
-
-        if (input == KEY_MOUSE && editor_mode) {
-            MEVENT event;
-            if (getmouse(&event) == OK) {
-                // Mouse clicked at event.y and event.x
-
-                // Adjust based on screen start lines and columns due to scrolling
-                int target_line = event.y - 1 + screen_start_line; // -1 to account for top row
-                int target_col = event.x + screen_start_col;
-
-                // Update cursor_row and cursor_col with the target values.
-                cursor_row = event.y - 1;
-                cursor_col = event.x;
-
-                // Don't move cursor beyond the last line or beyond the line length
-                if (target_line >= num_lines) {
-                    cursor_row = num_lines - screen_start_line - 1;
-                }
-            }
-        }
-
-
-        // insert character where it belongs
-        if (editor_mode && (isprint(input) || input == 9)) {
-            is_modified = 1; num_bytes++;
-            // Reallocate memory for the new character
-            char *new_line = realloc(current_line->line, current_line->line_length + 1);
-            current_line->line = new_line;
-            memmove(&current_line->line[absolute_cursor_col + 1], &current_line->line[absolute_cursor_col], current_line->line_length - absolute_cursor_col);
-            current_line->line[absolute_cursor_col] = input;
-            current_line->line_length++;
-
-            // Move the cursor to the right after inserting the character
-            if (cursor_col < max_x - 1) {
-                cursor_col++;
-            } else {
-                screen_start_col++;
-            }
-        }
-
-
-        if (editor_mode) {
-
-            // re-get current line, since it may have changed
-            file_lines *current_line = lines;
-            for (int i = 0; i < screen_start_line + cursor_row; i++) {
-                current_line = current_line->next;
-            }
-
-            // recalculate absolutes
-            absolute_cursor_col = cursor_col + screen_start_col;
-
-            // Don't move cursor beyond the end of the line
-            if (absolute_cursor_col > current_line->line_length) {
-                cursor_col = current_line->line_length - screen_start_col;
-                if (cursor_col < 0) {
-                    screen_start_col = current_line->line_length;
-                    cursor_col = 0;
-                }
-                absolute_cursor_col = cursor_col + screen_start_col;
-                skip_refresh = 0; // Force a refresh to update cursor position
-            }
-        }
-
-        if (!skip_refresh) {
-            curs_set(0); // Hide cursor
-
-            // Update the current pointer based on screen_start_line
-            current = lines;
-            for (int i = 0; i < screen_start_line; i++) {
-                current = current->next;
-            }
-
-            // Redisplay the window content
-            file_lines *temp = current;
-            int i;
-            for (i = 0; i < max_y - 2 && temp != NULL; i++) {
-                wmove(content_win, i, 0);
-                wclrtoeol(content_win);
-                display_line(content_win, temp, max_x, screen_start_col, editor_mode, patterns, num_patterns);
-                temp = temp->next;
-            }
-
-            // Clear any remaining lines on the screen
-            for (; i < max_y - 2; i++) {
-                wmove(content_win, i, 0);
-                wclrtoeol(content_win);
-            }
-        }
-
-        if (editor_mode) {
-            wmove(content_win, cursor_row, cursor_col);
+        if (target_column >= 0)
+        {
+            current_line=lines;
+            for (int i=0; i < cursor_row; i++) current_line=current_line->next;
+            cursor_byte=text_offset(current_line->line, current_line->line_length, target_column);
         }
     }
 
+close_editor:
+    delwin(toprow_win);
+    delwin(content_win);
+    free_file_lines(lines);
+    free_pattern_regexes(patterns, num_patterns);
+    curs_set(1);
     return 0;
 }
 

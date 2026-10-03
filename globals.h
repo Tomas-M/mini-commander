@@ -4,6 +4,11 @@
 void initialize_ncurses(void);
 void draw_buttons(int maxY, int maxX);
 void draw_windows(int maxY, int maxX);
+int text_cell(const char *text, int length, wchar_t *chars, int *width);
+int text_previous(const char *text, int position);
+int text_column(const char *text, int length);
+int text_offset(const char *text, int length, int column);
+int read_text_key(WINDOW *win, char *text);
 void shorten(char *name, int width, char *result);
 void update_panel(WINDOW *win, PanelProp *panel);
 void update_panel_cursor(void);

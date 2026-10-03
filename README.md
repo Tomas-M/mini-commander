@@ -26,7 +26,7 @@ slax.org
   highlighting, even without an extension.
 - **See invisible characters:** tabs have visible markers, and the editor marks
   control characters. Its status line shows the line, column, byte position,
-  file size, and numeric value of the byte under the cursor.
+  file size, and Unicode code point under the cursor.
 - **Editor save protection:** prompts before closing unsaved changes, preserves
   file ownership and permissions, and edits through symbolic links while keeping
   the links intact.
@@ -77,7 +77,14 @@ Usage:
 Use a UTF-8 terminal and locale to display international file and directory names
 correctly, for example `LC_ALL=C.UTF-8 ./mc`. Both builds use Unicode-capable
 ncurses (`ncursesw`), and panel labels are shortened without splitting UTF-8
-characters. Text editing and input handling are still byte-oriented.
+characters. The viewer, editor, and dialog text fields support UTF-8, including
+wide characters and combining accents. Editor search ignores letter case using
+the active locale. Files keep their original bytes unless edited; other text
+encodings are not converted automatically. Complex joined emoji sequences are
+not treated as a single character. The main command line and panel quick search
+still use byte-oriented input.
+
+Run `make test-editor` for UTF-8 editing, search, save, and rendering checks.
 
 For a small, fully static binary built with musl and ncurses, run
 `sh static/build.sh`. The script downloads its dependencies, builds and packs

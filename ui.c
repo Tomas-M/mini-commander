@@ -2,6 +2,95 @@
 #include "types.h"
 #include "globals.h"
 
+// Decode a character and its combining marks, keeping invalid bytes individually editable.
+int text_cell(const char *text, int length, wchar_t *chars, int *width)
+{
+    mbstate_t state={0};
+    size_t bytes=mbrtowc(chars, text, length, &state);
+    if (bytes == (size_t)-1 || bytes == (size_t)-2)
+    {
+        chars[0]=L'\xfffd';
+        bytes=1;
+    }
+    if (!bytes) bytes=1;
+    *width=wcwidth(chars[0]);
+    if (*width < 1) *width=1;
+    int count=1;
+    if (chars[0] && wcwidth(chars[0]) == 0)
+    {
+        chars[1]=chars[0];
+        chars[0]=L'\x25cc';
+        count=2;
+    }
+    while (bytes < (size_t)length)
+    {
+        wchar_t next;
+        state=(mbstate_t){0};
+        size_t size=mbrtowc(&next, text+bytes, length-bytes, &state);
+        if (!size || size == (size_t)-1 || size == (size_t)-2 || wcwidth(next) != 0) break;
+        if (count < CCHARW_MAX-1) chars[count++]=next;
+        bytes+=size;
+    }
+    chars[count]=L'\0';
+    return bytes;
+}
+
+// Find the preceding display character without stopping inside a UTF-8 sequence.
+int text_previous(const char *text, int position)
+{
+    int previous=0, width;
+    wchar_t chars[CCHARW_MAX];
+    for (int offset=0; offset < position;)
+    {
+        previous=offset;
+        offset+=text_cell(text+offset, position-offset, chars, &width);
+    }
+    return previous;
+}
+
+// Convert a byte length to terminal columns, including double-width characters.
+int text_column(const char *text, int length)
+{
+    int column=0, width;
+    wchar_t chars[CCHARW_MAX];
+    for (int offset=0; offset < length; column+=width)
+        offset+=text_cell(text+offset, length-offset, chars, &width);
+    return column;
+}
+
+// Snap a screen column to the beginning of a complete display character.
+int text_offset(const char *text, int length, int column)
+{
+    int offset=0, current=0, width;
+    wchar_t chars[CCHARW_MAX];
+    while (offset < length)
+    {
+        int bytes=text_cell(text+offset, length-offset, chars, &width);
+        if (current+width > column) break;
+        offset+=bytes;
+        current+=width;
+    }
+    return offset;
+}
+
+// Keep Unicode input separate from ncurses key codes, which overlap numerically.
+int read_text_key(WINDOW *win, char *text)
+{
+    wint_t input;
+    text[0]='\0';
+    int result=wget_wch(win, &input);
+    if (result == ERR) return ERR;
+    if (result == KEY_CODE_YES) return noesc(input);
+    if (input == 127 || input == 8) return KEY_BACKSPACE;
+    if (input < 32) return input;
+    if (!iswprint(input)) return ERR;
+    mbstate_t state={0};
+    size_t bytes=wcrtomb(text, input, &state);
+    if (bytes == (size_t)-1) return ERR;
+    text[bytes]='\0';
+    return 0;
+}
+
 void draw_buttons(int maxY, int maxX) {
     move(maxY - 1, 0);
     clrtoeol();

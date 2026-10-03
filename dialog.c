@@ -233,6 +233,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
     dialog_save_screen();
 
     WINDOW *win = create_dialog(title, buttons, prompt_is_present, is_danger, vertical_buttons);
+    keypad(win, TRUE);
     update_dialog_buttons(win, title, buttons, selected, prompt_is_present, editing_prompt, is_danger, vertical_buttons);
 
     int buttons_count = 0;
@@ -250,25 +251,39 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 
     while (1) {
         if (editing_prompt) {
-            if (cursor_position - prompt_offset >= max_prompt_display) {
-                prompt_offset = cursor_position - max_prompt_display + 1;
-            } else if (cursor_position < prompt_offset) {
-                prompt_offset = cursor_position;
-            }
+            int column=text_column(prompt, cursor_position);
+            cursor_position=text_offset(prompt, strlen(prompt), column);
+            if (column-prompt_offset >= max_prompt_display) prompt_offset=column-max_prompt_display+1;
+            if (column < prompt_offset) prompt_offset=column;
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_PMPT));
             if (!prompt_modified) wattron(win, A_BOLD);
-            mvwprintw(win, 2 + lines(title), 3, "%-*.*s", max_prompt_display, max_prompt_display, prompt + prompt_offset);
+            mvwhline(win, 2+lines(title), 3, ' ', max_prompt_display);
+            int length=strlen(prompt), x=0, cell_width;
+            for (int offset=0; offset < length && x < prompt_offset+max_prompt_display;)
+            {
+                wchar_t chars[CCHARW_MAX];
+                offset+=text_cell(prompt+offset, length-offset, chars, &cell_width);
+                if (!iswprint(chars[0])) chars[0]=L'.';
+                if (x >= prompt_offset && x+cell_width <= prompt_offset+max_prompt_display)
+                {
+                    cchar_t cell;
+                    setcchar(&cell, chars, prompt_modified ? 0 : A_BOLD, COLOR_BLACK_ON_CYAN_PMPT, NULL);
+                    mvwadd_wchnstr(win, 2+lines(title), 3+x-prompt_offset, &cell, 1);
+                }
+                x+=cell_width;
+            }
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
             if (!prompt_modified) wattroff(win, A_BOLD);
-            wmove(win, 2 + lines(title), 3 + cursor_position - prompt_offset);
+            wmove(win, 2+lines(title), 3+column-prompt_offset);
         }
         wrefresh(win);
 
-        ch = noesc(getch());
+        char input_text[MB_LEN_MAX+1];
+        ch=read_text_key(win, input_text);
         switch (ch) {
             case KEY_LEFT:
                 if (editing_prompt && cursor_position > 0) {
-                    cursor_position--;
+                    cursor_position=text_previous(prompt, cursor_position);
                     prompt_modified = 1;
                 } else if (!editing_prompt) {
                     if (selected > 0) {
@@ -281,7 +296,9 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
             case KEY_RIGHT:
                 if (editing_prompt) {
                     if (cursor_position < strlen(prompt)) {
-                        cursor_position++;
+                        wchar_t chars[CCHARW_MAX];
+                        int cell_width;
+                        cursor_position+=text_cell(prompt+cursor_position, strlen(prompt)-cursor_position, chars, &cell_width);
                     }
                     prompt_modified = 1;
                 } else if (!editing_prompt) {
@@ -294,19 +311,23 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
                 break;
             case KEY_BACKSPACE:
                 if (editing_prompt && cursor_position > 0) {
-                    memmove(&prompt[cursor_position - 1], &prompt[cursor_position], strlen(prompt) - cursor_position + 1);
-                    cursor_position--;
+                    int previous=text_previous(prompt, cursor_position);
+                    memmove(prompt+previous, prompt+cursor_position, strlen(prompt)-cursor_position+1);
+                    cursor_position=previous;
                     prompt_modified = 1;
                 }
                 break;
             case KEY_DC: // Handling the Del key
                if (editing_prompt && cursor_position < strlen(prompt)) {
-                   memmove(&prompt[cursor_position], &prompt[cursor_position + 1], strlen(prompt) - cursor_position);
+                   wchar_t chars[CCHARW_MAX];
+                   int cell_width, bytes=text_cell(prompt+cursor_position, strlen(prompt)-cursor_position, chars, &cell_width);
+                   memmove(prompt+cursor_position, prompt+cursor_position+bytes, strlen(prompt)-cursor_position-bytes+1);
                    prompt_modified = 1;
                }
                break;
             case KEY_F(10):
             case 27:
+                delwin(win);
                 dialog_restore_screen();
                 return -1;
                 break;
@@ -365,15 +386,17 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
                 return selected + 1;
                 break;
             default:
-                if (editing_prompt && isprint(ch) && strlen(prompt) < CMD_MAX) {
+                if (editing_prompt && input_text[0]) {
                     if (!prompt_modified) { // Check if the prompt is not modified
                         strcpy(prompt, ""); // Clear the prompt
                         cursor_position = 0; // Reset the cursor position
                         prompt_modified = 1; // Set the flag to indicate the prompt is modified
                     }
-                    memmove(&prompt[cursor_position + 1], &prompt[cursor_position], strlen(prompt) - cursor_position + 1);
-                    prompt[cursor_position] = ch;
-                    cursor_position++;
+                    int bytes=strlen(input_text);
+                    if (strlen(prompt)+bytes >= CMD_MAX) break;
+                    memmove(prompt+cursor_position+bytes, prompt+cursor_position, strlen(prompt)-cursor_position+1);
+                    memcpy(prompt+cursor_position, input_text, bytes);
+                    cursor_position+=bytes;
                     prompt_modified = 1;
                 }
                 break;

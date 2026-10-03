@@ -5,7 +5,7 @@ CFLAGS += -std=gnu99 -lncursesw -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FIL
 mc: *.c *.h Makefile
 	$(CC) mc.c cmd.c operations.c dialog.c filelist.c init.c panel.c ui.c view_edit.c progress.c $(CFLAGS) -o mc
 
-.PHONY: clean
+.PHONY: clean test-editor
 
 tags:
 	#
@@ -16,6 +16,10 @@ tags:
 
 test: mc
 	./mc
+
+test-editor:
+	@binary=$$(mktemp /tmp/mc-editor-test.XXXXXX); trap 'rm -f "$$binary"' EXIT; \
+	$(CC) tests/editor_utf8.c $(filter-out mc.c,$(wildcard *.c)) $(CFLAGS) -o "$$binary" && "$$binary"
 
 clean:
 	rm -f mc

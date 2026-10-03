@@ -7,6 +7,7 @@
 #include <ncurses.h>
 #include <pwd.h>
 #include <regex.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,5 +17,6 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>

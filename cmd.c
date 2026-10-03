@@ -2,6 +2,32 @@
 #include "types.h"
 #include "globals.h"
 
+// Execute a selected path literally, without passing its name through a shell.
+int execute_file(const char *filename)
+{
+    // Interrupt the child without terminating the file manager waiting for it.
+    void (*interrupt_handler)(int)=signal(SIGINT, SIG_IGN);
+    void (*quit_handler)(int)=signal(SIGQUIT, SIG_IGN);
+    pid_t child=fork();
+    if (child == 0)
+    {
+        signal(SIGINT, interrupt_handler);
+        signal(SIGQUIT, quit_handler);
+        execl(filename, filename, (char *)NULL);
+        perror(filename);
+        _exit(127);
+    }
+    int status=-1;
+    if (child > 0)
+        while (waitpid(child, &status, 0) < 0)
+            if (errno != EINTR) { status=-1; break; }
+    int error=errno;
+    signal(SIGINT, interrupt_handler);
+    signal(SIGQUIT, quit_handler);
+    errno=error;
+    return status;
+}
+
 void cursor_to_cmd() {
     // move cursor where it belongs
     move(LINES - 2, prompt_length + cursor_pos - cmd_offset);

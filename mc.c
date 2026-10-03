@@ -422,13 +422,21 @@ int main(int argc, char *argv[]) {
 
         if (ch == '\n')
         {
+            int run_selected_file=0;
             if (cmd_len == 0) {
                 if (current) {
                    if (current->is_dir) {
                        dive_into_directory(current);
                    } else if (current->is_executable && cmd_len == 0) {
-                       snprintf(cmd, CMD_MAX, "%s/%s", active_panel->path, current->name);
-                       cmd_len = strlen(cmd);
+                       int length=snprintf(cmd, sizeof(cmd), "%s/%s", active_panel->path, current->name);
+                       if (length < 0 || length >= sizeof(cmd))
+                       {
+                           cmd[0]='\0';
+                           show_errormsg("Executable path is too long");
+                           continue;
+                       }
+                       cmd_len=length;
+                       run_selected_file=1;
                    }
                 }
             }
@@ -438,7 +446,11 @@ int main(int argc, char *argv[]) {
 
                 endwin();  // End ncurses mode
                 printf("%s@%s:%s# %s\n", username, unameData.nodename, active_panel->path, cmd);
-                system(cmd);  // Execute the command
+                if (run_selected_file)
+                {
+                    if (execute_file(cmd) < 0) perror(cmd);
+                }
+                else system(cmd); // Explicitly typed commands retain shell syntax.
                 init_screen();
                 memset(cmd, 0, CMD_MAX);
                 cmd_len = cursor_pos = cmd_offset = prompt_length = 0;

@@ -39,13 +39,26 @@ static int write_all(int fd, const char *data, size_t length)
     return 0;
 }
 
-// Publish the temporary file only after all data has been written and closed.
+// Save through symlinks and preserve ownership and permissions when replacing the target.
 int write_file_lines(const char *filename, file_lines *lines)
 {
-    char temp_filename[strlen(filename)+11];
-    snprintf(temp_filename, sizeof(temp_filename), "%s.tmpXXXXXX", filename);
+    char *target=realpath(filename, NULL);
+    if (!target) return -1;
+    struct stat original;
+    if (stat(target, &original) != 0)
+    {
+        free(target);
+        return -1;
+    }
+
+    char temp_filename[strlen(target)+11];
+    snprintf(temp_filename, sizeof(temp_filename), "%s.tmpXXXXXX", target);
     int fd=mkstemp(temp_filename);
-    if (fd == -1) return -1;
+    if (fd == -1)
+    {
+        free(target);
+        return -1;
+    }
 
     int error=0;
     for (file_lines *current=lines; current; current=current->next)
@@ -58,9 +71,13 @@ int write_file_lines(const char *filename, file_lines *lines)
         }
     }
 
+    // Apply the mode after ownership and data changes, which can clear special mode bits.
+    if (!error && fchown(fd, original.st_uid, original.st_gid) != 0) error=errno;
+    if (!error && fchmod(fd, original.st_mode & 07777) != 0) error=errno;
     if (!error && fsync(fd) != 0) error=errno;
     if (close(fd) != 0 && !error) error=errno;
-    if (!error && rename(temp_filename, filename) != 0) error=errno;
+    if (!error && rename(temp_filename, target) != 0) error=errno;
+    free(target);
     if (error)
     {
         unlink(temp_filename);

@@ -531,7 +531,25 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
         int btn = 0;
         char errmsg[CMD_MAX] = {0};
 
-        ret = rename(src, tgt);
+        // Detect collisions atomically, including targets created during the move.
+        ret=renameat2(AT_FDCWD, src, AT_FDCWD, tgt, RENAME_NOREPLACE);
+        if (ret != 0 && errno == EEXIST)
+        {
+            if (context->confirm_all_yes) btn=1;
+            else if (context->confirm_all_no) btn=4;
+            else btn=show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0);
+
+            if (btn == 3) { context->confirm_all_yes=1; btn=1; }
+            if (btn == 5) { context->abort=1; return OPERATION_ABORT; }
+            if (btn != 1)
+            {
+                if (btn == 4) context->confirm_all_no=1;
+                context->keep_item_selected=1;
+                return OPERATION_SKIP;
+            }
+            ret=rename(src, tgt);
+        }
+        if (ret == 0) return OPERATION_OK;
         if (ret != 0) {
             if (context->skip_all == 1) return OPERATION_SKIP;
             btn = show_dialog(SPRINTF("Failed to rename\n%s\nTo\n%s\n%s (%d)", src, tgt, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0);
@@ -541,6 +559,7 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
             if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
         }
     }
+    return OPERATION_OK;
 }
 
 

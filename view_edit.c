@@ -636,8 +636,8 @@ int view_edit_file(char *filename, int editor_mode) {
             case KEY_BACKSPACE: // Handle Backspace key
             {
                 if (editor_mode) {
-                    is_modified = 1;
                     if (absolute_cursor_col > 0) {
+                        is_modified=1;
                         // Remove the character to the left of the cursor
                         memmove(&current_line->line[absolute_cursor_col - 1], &current_line->line[absolute_cursor_col], current_line->line_length - absolute_cursor_col);
                         current_line->line_length--;
@@ -652,6 +652,7 @@ int view_edit_file(char *filename, int editor_mode) {
                             screen_start_col--;
                         }
                     } else if (cursor_row > 0) {
+                        is_modified=1;
                         // Merge the current line with the previous line
                         file_lines *prev_line = lines;
                         for (int i = 0; i < screen_start_line + cursor_row - 1; i++) {
@@ -675,8 +676,6 @@ int view_edit_file(char *filename, int editor_mode) {
 
                         cursor_row--;
                         cursor_col = original_prev_line_length - screen_start_col;
-                    } else {
-                        is_modified = 0;
                     }
                 }
             }
@@ -685,8 +684,8 @@ int view_edit_file(char *filename, int editor_mode) {
             case KEY_DC: // Handle Delete key
             {
                 if (editor_mode) {
-                    is_modified = 1;
                     if (absolute_cursor_col < current_line->line_length) {
+                        is_modified=1;
                         // Remove the character at the cursor position
                         memmove(&current_line->line[absolute_cursor_col], &current_line->line[absolute_cursor_col + 1], current_line->line_length - absolute_cursor_col - 1);
                         current_line->line_length--;
@@ -694,6 +693,7 @@ int view_edit_file(char *filename, int editor_mode) {
                         current_line->line = new_line;
                         num_bytes--;
                     } else if (current_line->next) {
+                        is_modified=1;
                         // Merge the current line with the next line
                         int new_length = current_line->line_length + current_line->next->line_length;
                         char *merged_line = realloc(current_line->line, new_length);
@@ -706,8 +706,6 @@ int view_edit_file(char *filename, int editor_mode) {
                         free(temp);
                         num_lines--;
                         num_bytes--;
-                    } else {
-                        is_modified = 0;
                     }
                 }
             }

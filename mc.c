@@ -354,9 +354,13 @@ int main(int argc, char *argv[]) {
                 // Handle mouse wheel scrolling
                 if (event.bstate & BUTTON4_PRESSED) {
                     active_panel->selected_index--;
-                } else if (event.bstate & BUTTON5_PRESSED) {
+                }
+                // Older ncurses mouse interfaces have no fifth-button event.
+#ifdef BUTTON5_PRESSED
+                else if (event.bstate & BUTTON5_PRESSED) {
                     active_panel->selected_index++;
                 }
+#endif
             }
         }
 

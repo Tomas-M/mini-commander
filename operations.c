@@ -531,8 +531,8 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
         int btn = 0;
         char errmsg[CMD_MAX] = {0};
 
-        // Detect collisions atomically, including targets created during the move.
-        ret=renameat2(AT_FDCWD, src, AT_FDCWD, tgt, RENAME_NOREPLACE);
+        // Call the kernel directly: older glibc lacks the renameat2 wrapper.
+        ret=syscall(SYS_renameat2, AT_FDCWD, src, AT_FDCWD, tgt, RENAME_NOREPLACE);
         if (ret != 0 && errno == EEXIST)
         {
             if (context->confirm_all_yes) btn=1;

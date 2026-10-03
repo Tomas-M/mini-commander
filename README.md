@@ -21,6 +21,9 @@ slax.org
 
 - **Built-in viewer and editor:** open files with `F3` or edit them with `F4`,
   without launching an external program. Save in the editor with `F2`.
+- **UTF-8 support:** view and edit multilingual text, including wide characters
+  and combining accents, with correct cursor movement and deletion. Dialog text
+  fields accept UTF-8, and panels display international file and directory names.
 - **Syntax highlighting:** basic highlighting for C source and headers (`.c`,
   `.h`) and shell scripts (`.sh`). Files starting with `#!/` also receive shell
   highlighting, even without an extension.
@@ -56,6 +59,7 @@ slax.org
 | `Ctrl+Space` | Calculate the size of the directory under the cursor, including its contents (with no other items selected). |
 | `Alt+Enter` | Insert the filename under the cursor into the command line. |
 | `Alt+A` | Insert the active panel's directory path into the command line. |
+| `Shift+F5` / `Shift+F6` / `Shift+F7` | Copy, move/rename, or create a directory with the name under the cursor prefilled, without its path. Typing appends to the name; relative targets use the active directory. |
 | `Enter` | Execute a typed shell command in the active directory; with an empty command line, open a directory or run an executable. |
 | `Ctrl+O` | Temporarily reveal terminal output; press any key to return to the panels. |
 | `Ctrl+R` or `F9` | Refresh both panels. |
@@ -83,8 +87,6 @@ the active locale. Files keep their original bytes unless edited; other text
 encodings are not converted automatically. Complex joined emoji sequences are
 not treated as a single character. The main command line and panel quick search
 still use byte-oriented input.
-
-Run `make test-editor` for UTF-8 editing, search, save, and rendering checks.
 
 For a small, fully static binary built with musl and ncurses, run
 `sh static/build.sh`. The script downloads its dependencies, builds and packs

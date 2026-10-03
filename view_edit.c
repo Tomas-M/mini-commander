@@ -405,7 +405,7 @@ int view_edit_file(char *filename, int editor_mode) {
             case 27:
                 if (is_modified)
                 {
-                    int button=show_dialog(SPRINTF("File %s was modified.\nSave before close?", filename), (char *[]) {"Yes", "No", "Cancel", NULL}, 2, NULL, 0, 0);
+                    int button=show_dialog(SPRINTF("File %s was modified.\nSave before close?", filename), (char *[]) {"Yes", "No", "Cancel", NULL}, 2, NULL, 0, 0, 0);
                     if (button != 1 && button != 2) break;
                     if (button == 1 && write_file_lines(filename, lines) != 0)
                     {
@@ -415,7 +415,7 @@ int view_edit_file(char *filename, int editor_mode) {
                 }
                 goto close_editor;
             case KEY_F(2):
-                if (editor_mode && show_dialog(SPRINTF("Confirm save file:\n%s", filename), (char *[]) {"Save", "Cancel", NULL}, 0, NULL, 0, 0) == 1)
+                if (editor_mode && show_dialog(SPRINTF("Confirm save file:\n%s", filename), (char *[]) {"Save", "Cancel", NULL}, 0, NULL, 0, 0, 0) == 1)
                 {
                     if (write_file_lines(filename, lines) != 0)
                         show_errormsg(SPRINTF("Cannot save file:\n%s\n%s", filename, strerror(errno)));
@@ -423,10 +423,9 @@ int view_edit_file(char *filename, int editor_mode) {
                 }
                 break;
             case KEY_F(7):
-            case KEY_F(19):
             case KEY_SHIFT_F7:
             {
-                if ((!find_str[0] || input == KEY_F(7)) && show_dialog("Enter search string:", (char *[]) {"Find", "Cancel", NULL}, 0, find_str, 0, 0) != 1) break;
+                if ((!find_str[0] || input == KEY_F(7)) && show_dialog("Enter search string:", (char *[]) {"Find", "Cancel", NULL}, 0, find_str, 0, 0, 0) != 1) break;
                 if (!find_str[0]) break;
                 file_lines *search_line=current_line;
                 int found_row=cursor_row, offset=cursor_byte, found=-1;
@@ -448,7 +447,7 @@ int view_edit_file(char *filename, int editor_mode) {
                     found_row++;
                     offset=0;
                 }
-                if (found < 0) show_dialog("Search string not found", (char *[]) {"OK", NULL}, 0, NULL, 0, 0);
+                if (found < 0) show_dialog("Search string not found", (char *[]) {"OK", NULL}, 0, NULL, 0, 0, 0);
                 else
                 {
                     cursor_row=found_row;

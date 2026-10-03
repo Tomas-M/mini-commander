@@ -222,7 +222,7 @@ void dialog_restore_screen() {
 }
 
 
-int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is_danger, int vertical_buttons) {
+int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is_danger, int vertical_buttons, int edit_prompt) {
     int prompt_is_present = prompt ? 1 : 0;
     int editing_prompt = prompt ? 1 : 0;
 
@@ -247,7 +247,8 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
     int width, height;
     getmaxyx(win, height, width);
     int max_prompt_display = width - 6;
-    int prompt_modified = 0;
+    // Shifted file actions start with an editable name instead of a selected default.
+    int prompt_modified=edit_prompt;
 
     while (1) {
         if (editing_prompt) {
@@ -407,5 +408,5 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 
 
 void show_errormsg(char * msg) {
-    show_dialog(msg, (char *[]) {"OK", NULL}, 0, NULL, 1, 0);
+    show_dialog(msg, (char *[]) {"OK", NULL}, 0, NULL, 1, 0, 0);
 }

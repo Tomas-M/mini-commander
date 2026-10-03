@@ -70,6 +70,12 @@ int noesc(int ch) {
                     ch = KEY_F(4);
                     break;
                 case 31:
+                    ch = KEY_SHIFT_F5;
+                    break;
+                case 32:
+                    ch = KEY_SHIFT_F6;
+                    break;
+                case 33:
                     ch = KEY_SHIFT_F7;
                     break;
                 default:
@@ -178,7 +184,7 @@ int main(int argc, char *argv[]) {
             "Sort by modify time, from old to new, dirs first",
             "Sort by name, from z to a, dirs first",
             "Sort by size, from big to small, dirs first",
-            "Sort by modify time, from new to old, dirs first", NULL}, active_panel->sort_order, NULL, 0, 1);
+            "Sort by modify time, from new to old, dirs first", NULL}, active_panel->sort_order, NULL, 0, 1, 0);
             if (sort != -1) active_panel->sort_order = sort - 1;
             update_files_in_both_panels();
         }
@@ -211,7 +217,7 @@ int main(int argc, char *argv[]) {
            }
         }
 
-        if (ch == KEY_F(5)) { // F5
+        if (ch == KEY_F(5) || ch == KEY_SHIFT_F5) { // Copy
             if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
                 show_errormsg("Cannot operate on \"..\"");
                 continue;
@@ -219,8 +225,9 @@ int main(int argc, char *argv[]) {
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
             snprintf(prompt, sizeof(prompt), "%s", active_panel == &left_panel ? right_panel.path : left_panel.path);
+            if (ch == KEY_SHIFT_F5) snprintf(prompt, sizeof(prompt), "%s", active_panel->file_under_cursor);
             sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0, ch == KEY_SHIFT_F5);
             if (btn == 1) {
                 operationContext stats = {0};
                 operationContext context = {0};
@@ -234,7 +241,7 @@ int main(int argc, char *argv[]) {
             update_files_in_both_panels();
         }
 
-        if (ch == KEY_F(6)) { // F6
+        if (ch == KEY_F(6) || ch == KEY_SHIFT_F6) { // Move / rename
             if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
                 show_errormsg("Cannot operate on \"..\"");
                 continue;
@@ -242,8 +249,9 @@ int main(int argc, char *argv[]) {
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
             snprintf(prompt, sizeof(prompt), "%s", active_panel == &left_panel ? right_panel.path : left_panel.path);
+            if (ch == KEY_SHIFT_F6) snprintf(prompt, sizeof(prompt), "%s", active_panel->file_under_cursor);
             sprintf(title, "Move %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0, ch == KEY_SHIFT_F6);
             if (btn == 1) {
                 operationContext stats = {0};
                 operationContext context = {0};
@@ -257,14 +265,14 @@ int main(int argc, char *argv[]) {
             update_files_in_both_panels();
         }
 
-        if (ch == KEY_F(7)) { // F7
+        if (ch == KEY_F(7) || ch == KEY_SHIFT_F7) { // Create directory
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
             if (strcmp(active_panel->file_under_cursor, "..") != 0) {
                 snprintf(prompt, sizeof(prompt), "%s", active_panel->file_under_cursor);
             }
             sprintf(title, "Enter directory name to create:");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);
+            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0, ch == KEY_SHIFT_F7);
             if (btn == 1 && strlen(prompt) > 0) {
                 int err = mkdir_recursive(prompt, S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH);
                 if (!err) {
@@ -297,7 +305,7 @@ int main(int argc, char *argv[]) {
 
             char title[CMD_MAX] = {};
             sprintf(title, "Delete %d file%s/director%s?", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, 0, NULL, 1, 0);
+            int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, 0, NULL, 1, 0, 0);
 
             if (btn == 1) {
                 operationContext stats = {0};

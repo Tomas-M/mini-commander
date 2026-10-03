@@ -32,6 +32,10 @@ void init_screen() {
     start_color();
     raw();
     keypad(stdscr, TRUE);
+    // Recognize shifted function keys even with a minimal terminal description.
+    define_key("\033[15;2~", KEY_SHIFT_F5);
+    define_key("\033[17;2~", KEY_SHIFT_F6);
+    define_key("\033[18;2~", KEY_SHIFT_F7);
     noecho();
     curs_set(1);
 

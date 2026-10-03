@@ -218,7 +218,7 @@ int main(int argc, char *argv[]) {
             }
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
-            sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
+            snprintf(prompt, sizeof(prompt), "%s", active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);
             if (btn == 1) {
@@ -241,7 +241,7 @@ int main(int argc, char *argv[]) {
             }
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
-            sprintf(prompt, active_panel == &left_panel ? right_panel.path : left_panel.path);
+            snprintf(prompt, sizeof(prompt), "%s", active_panel == &left_panel ? right_panel.path : left_panel.path);
             sprintf(title, "Move %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);
             if (btn == 1) {
@@ -261,7 +261,7 @@ int main(int argc, char *argv[]) {
             char title[CMD_MAX] = {0};
             char prompt[CMD_MAX] = {0};
             if (strcmp(active_panel->file_under_cursor, "..") != 0) {
-                sprintf(prompt, active_panel->file_under_cursor);
+                snprintf(prompt, sizeof(prompt), "%s", active_panel->file_under_cursor);
             }
             sprintf(title, "Enter directory name to create:");
             int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0);

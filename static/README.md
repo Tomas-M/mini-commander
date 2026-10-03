@@ -11,7 +11,11 @@ The script always builds a 32-bit x86 executable for i686-compatible CPUs,
 including when run on a 64-bit x86 Linux host. It downloads a self-contained
 32-bit GCC toolchain from [musl.cc](https://musl.cc/), so no system compiler or
 additional 32-bit development packages are needed. Musl, ncurses, and the
-application are all compiled with `-m32 -march=i686`.
+application are all compiled with `-m32 -march=i686 -Os -fno-pie`.
+Explicitly disabling PIE code generation reduces the size of the static binary;
+the linker also uses `-no-pie`.
+The application uses LTO with inlining disabled, which produced a smaller packed
+executable with the pinned compiler. Libraries retain their normal inlining.
 It downloads and builds [musl](https://musl.libc.org/) 1.2.6 and
 [ncurses](https://invisible-island.net/ncurses/) 6.6 locally, links everything
 statically with Unicode-capable ncurses (`ncursesw`), strips unused code and

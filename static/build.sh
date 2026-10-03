@@ -69,7 +69,8 @@ if [ "$pack" = 1 ]; then
 fi
 
 prefix="$build_dir/local"
-export CFLAGS='-m32 -march=i686 -Os -g0 -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables'
+# Avoid position-independent code overhead in this fixed-address static executable.
+export CFLAGS='-m32 -march=i686 -fno-pie -Os -g0 -ffunction-sections -fdata-sections -fno-unwind-tables -fno-asynchronous-unwind-tables'
 # The downloaded GCC defaults to PIE, but musl-gcc's startup objects cannot relocate static PIE.
 export LDFLAGS='-m32 -static -no-pie -Wl,--gc-sections -Wl,--build-id=none'
 echo "Building 32-bit x86 musl $musl_version..."
@@ -117,9 +118,10 @@ echo "Building minimal ncurses $ncurses_version with embedded terminal descripti
 
 echo "Linking 32-bit x86 Mini Commander..."
 # Use the normal build's source files, bypassing its optional host UPX step.
+# Disabling inlining here gives a smaller packed executable with this toolchain.
 (
     cd "$project_dir"
-    "$CC" $CFLAGS -std=gnu99 -flto -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE \
+    "$CC" $CFLAGS -std=gnu99 -flto -fno-inline -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE \
         -D_FILE_OFFSET_BITS=64 -I"$prefix/include" \
         mc.c cmd.c operations.c dialog.c filelist.c init.c panel.c ui.c view_edit.c progress.c \
         "$prefix/lib/libncursesw.a" $LDFLAGS -o "$build_dir/mc"

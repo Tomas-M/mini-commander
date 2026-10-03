@@ -531,8 +531,20 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
         int btn = 0;
         char errmsg[CMD_MAX] = {0};
 
-        // Call the kernel directly: older glibc lacks the renameat2 wrapper.
+        // Prefer atomic no-replace without requiring recent glibc or kernel headers.
+        ret=-1;
+        errno=ENOSYS;
+#if defined(SYS_renameat2) && defined(RENAME_NOREPLACE)
         ret=syscall(SYS_renameat2, AT_FDCWD, src, AT_FDCWD, tgt, RENAME_NOREPLACE);
+#endif
+        int rename_unsupported=errno == ENOSYS || errno == EINVAL || errno == EOPNOTSUPP;
+        if (ret != 0 && rename_unsupported)
+        {
+            // Portable fallback: another process can create the target after this check.
+            struct stat target_stat;
+            if (lstat(tgt, &target_stat) == 0) errno=EEXIST;
+            else if (errno == ENOENT) ret=rename(src, tgt);
+        }
         if (ret != 0 && errno == EEXIST)
         {
             if (context->confirm_all_yes) btn=1;
@@ -553,7 +565,7 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
         if (ret != 0) {
             if (context->skip_all == 1) return OPERATION_SKIP;
             btn = show_dialog(SPRINTF("Failed to rename\n%s\nTo\n%s\n%s (%d)", src, tgt, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0);
-            if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
+            if (btn <= 1) { context->keep_item_selected = 1; return OPERATION_SKIP; }
             if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
             if (btn == 3) { ret = OPERATION_RETRY; continue; }
             if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }

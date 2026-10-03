@@ -21,26 +21,53 @@ char *find_newline(char *buffer, size_t length) {
 
 
 
-int write_file_lines(const char *filename, file_lines *lines) {
-    char temp_filename[strlen(filename) + 10];  // Space for ".tmpN\0"
-    int counter = 0;
+// Complete partial writes and retry interrupted writes before reporting a failure.
+static int write_all(int fd, const char *data, size_t length)
+{
+    while (length)
+    {
+        ssize_t written=write(fd, data, length);
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0)
+        {
+            if (written == 0) errno=EIO;
+            return -1;
+        }
+        data+=written;
+        length-=written;
+    }
+    return 0;
+}
 
-    do {
-        snprintf(temp_filename, sizeof(temp_filename), "%s.tmp%d", filename, counter++);
-    } while (access(temp_filename, F_OK) != -1);
-
-    int fd = open(temp_filename, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+// Publish the temporary file only after all data has been written and closed.
+int write_file_lines(const char *filename, file_lines *lines)
+{
+    char temp_filename[strlen(filename)+11];
+    snprintf(temp_filename, sizeof(temp_filename), "%s.tmpXXXXXX", filename);
+    int fd=mkstemp(temp_filename);
     if (fd == -1) return -1;
 
-    file_lines *current = lines;
-    while (current) {
-        write(fd, current->line, current->line_length);
-        if (current->next) write(fd, "\n", 1);
-        current = current->next;
+    int error=0;
+    for (file_lines *current=lines; current; current=current->next)
+    {
+        if (write_all(fd, current->line, current->line_length) != 0 ||
+            (current->next && write_all(fd, "\n", 1) != 0))
+        {
+            error=errno;
+            break;
+        }
     }
 
-    close(fd);
-    return rename(temp_filename, filename) == 0 ? 0 : -1;
+    if (!error && fsync(fd) != 0) error=errno;
+    if (close(fd) != 0 && !error) error=errno;
+    if (!error && rename(temp_filename, filename) != 0) error=errno;
+    if (error)
+    {
+        unlink(temp_filename);
+        errno=error;
+        return -1;
+    }
+    return 0;
 }
 
 
@@ -350,7 +377,11 @@ int view_edit_file(char *filename, int editor_mode) {
                 if (is_modified) {
                     int btn = show_dialog(SPRINTF("File %s was modified.\nSave before close?", filename), (char *[]) {"Yes", "No", "Cancel", NULL}, 2, NULL, 0, 0);
                     if (btn == 1) {
-                        write_file_lines(filename, lines);
+                        if (write_file_lines(filename, lines) != 0)
+                        {
+                            show_errormsg(SPRINTF("Cannot save file:\n%s\n%s", filename, strerror(errno)));
+                            break;
+                        }
                     }
                     if (btn != 1 && btn != 2) { // continue editing
                         break;
@@ -366,8 +397,9 @@ int view_edit_file(char *filename, int editor_mode) {
             {
                 int btn = show_dialog(SPRINTF("Confirm save file:\n%s", filename), (char *[]) {"Save", "Cancel", NULL}, 0, NULL, 0, 0);
                 if (btn == 1) {
-                    write_file_lines(filename, lines);
-                    is_modified = 0;
+                    if (write_file_lines(filename, lines) != 0)
+                        show_errormsg(SPRINTF("Cannot save file:\n%s\n%s", filename, strerror(errno)));
+                    else is_modified=0;
                 }
                 break;
             }

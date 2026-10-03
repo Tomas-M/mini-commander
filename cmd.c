@@ -28,33 +28,30 @@ int execute_file(const char *filename)
     return status;
 }
 
-void cursor_to_cmd() {
-    // move cursor where it belongs
-    move(LINES - 2, prompt_length + cursor_pos - cmd_offset);
+// Convert the command's byte position to the visible terminal column.
+void cursor_to_cmd()
+{
+    move(LINES-2, prompt_length+text_column(cmd, cursor_pos)-cmd_offset);
     curs_set(1);
 }
 
-void update_cmd() {
-
+// Keep the prompt and command on one row, scrolling in terminal columns.
+void update_cmd()
+{
     attron(COLOR_PAIR(COLOR_WHITE_ON_BLACK));
-
-    // Print username, hostname, and current directory path
-    move(LINES - 2, 0);
+    move(LINES-2, 0);
     clrtoeol();
-    printw("%s@%s:%s# ", username, unameData.nodename, active_panel->path);
+    char prompt[CMD_MAX];
+    snprintf(prompt, sizeof(prompt), "%s@%s:%s# ", username, unameData.nodename, active_panel->path);
+    addstr(SHORTEN(prompt, COLS-4));
+    prompt_length=getcurx(stdscr);
 
-    // Calculate max command display length
-    prompt_length = getcurx(stdscr);
-    int max_cmd_display = COLS - prompt_length;
-
-    // Print the visible part of the command, limited to max_cmd_display characters
-    printw("%.*s", max_cmd_display, cmd + cmd_offset);
-
+    int width=COLS-prompt_length, column=text_column(cmd, cursor_pos);
+    cursor_pos=text_offset(cmd, cmd_len, column);
+    if (column-cmd_offset >= width) cmd_offset=column-width+1;
+    if (column < cmd_offset) cmd_offset=column;
+    draw_text(stdscr, LINES-2, prompt_length, cmd, cmd_offset, width);
     cursor_to_cmd();
-
-    // Refresh only the changed parts
     refresh();
-
-    return;
 }
 

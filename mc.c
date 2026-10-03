@@ -19,7 +19,7 @@ struct timeval current_time = {0};
 struct timeval diff_time = {0};
 
 int cursor_pos = 0;
-int cmd_offset = 0;
+int cmd_offset = 0; // Horizontal scroll in terminal columns; cursor_pos stays a byte offset.
 int prompt_length = 0;
 
 char cmd[CMD_MAX] = {0};
@@ -27,63 +27,10 @@ int cmd_len = 0;
 
 int color_enabled = 1;
 
+// Normalize alternate Home and End key codes reported by some terminals.
 int noesc(int ch) {
-
-    // some special cases, who knows why
     if (ch == 362) return KEY_HOME;
     if (ch == 385) return KEY_END;
-
-    int num = 0;
-    if (ch == 27) {  // Escape character
-        ch = getch();
-        while (ch == '[') {  // Discard the '[' character
-            ch = getch();
-        }
-
-        if (ch == 10) return KEY_ALT_ENTER;
-        if (ch == 'a') return KEY_ALT_a;
-        if (ch == 's') return KEY_ALT_s;
-
-        while (ch >= '0' && ch <= '9') {  // Read numbers
-            num = num * 10 + (ch - '0');
-            ch = getch();
-        }
-
-        if (ch == '~') {
-            switch (num) {
-                case 1:
-                    ch = KEY_HOME;
-                    break;
-                case 2:
-                    ch = KEY_IC;
-                    break;
-                case 4:
-                    ch = KEY_END;
-                    break;
-                case 12:
-                    ch = KEY_F(2);
-                    break;
-                case 13:
-                    ch = KEY_F(3);
-                    break;
-                case 14:
-                    ch = KEY_F(4);
-                    break;
-                case 31:
-                    ch = KEY_SHIFT_F5;
-                    break;
-                case 32:
-                    ch = KEY_SHIFT_F6;
-                    break;
-                case 33:
-                    ch = KEY_SHIFT_F7;
-                    break;
-                default:
-                    break;
-            }
-        }
-    }
-
     return ch;
 }
 
@@ -113,7 +60,7 @@ int main(int argc, char *argv[]) {
                 return 1;
                 break;
             case 'v':
-                fprintf(stderr, "Version 1.1\n", argv[0]);
+                fprintf(stderr, "Version 2.0\n", argv[0]);
                 return 1;
                 break;
         }
@@ -159,9 +106,10 @@ int main(int argc, char *argv[]) {
         strncpy(active_panel->file_under_cursor, current->name, strlen(current->name));
         chdir(active_panel->path);
 
-        int ch = noesc(getch());
+        char input_text[MB_LEN_MAX+1];
+        int ch=read_text_key(stdscr, input_text);
 
-        if (ch == 0) { // Ctrl+Space
+        if (ch == 0 && !input_text[0]) { // Ctrl+Space, not printable Unicode input.
             // TODO: fix when files are selected
             // TODO: fix when cursor is at ..
             operationContext stats = {0};
@@ -373,46 +321,18 @@ int main(int argc, char *argv[]) {
         }
 
 
-        if (ch == KEY_ALT_ENTER) { // Check for Enter key after Alt
-            char *filename = active_panel->file_under_cursor;
-            int filename_len = strlen(filename);
-
-            // Check if there's enough space for the filename and the space character
-            if (cmd_len + filename_len + 1 < CMD_MAX) {
-                // Move the existing command to make space for the filename and space
-                memmove(cmd + cursor_pos + filename_len + 1, cmd + cursor_pos, cmd_len - cursor_pos);
-
-                // Copy the filename to the command buffer
-                memcpy(cmd + cursor_pos, filename, filename_len);
-
-                // Add a space after the filename
-                cmd[cursor_pos + filename_len] = ' ';
-
-                // Update the command length and cursor position
-                cmd_len += filename_len + 1;
-                cursor_pos += filename_len + 1;
-            }
-        }
-
-
-        if (ch == KEY_ALT_a) {
-            char *path = active_panel->path;
-            int path_len = strlen(path);
-
-            // Check if there's enough space for the path and the / character
-            if (cmd_len + path_len + 1 < CMD_MAX) {
-                // Move the existing command to make space for the path and /
-                memmove(cmd + cursor_pos + path_len + 1, cmd + cursor_pos, cmd_len - cursor_pos);
-
-                // Copy the path to the command buffer
-                memcpy(cmd + cursor_pos, path, path_len);
-
-                // Add a / after the path
-                cmd[cursor_pos + path_len] = '/';
-
-                // Update the command length and cursor position
-                cmd_len += path_len + 1;
-                cursor_pos += path_len + 1;
+        // Insert complete filename/path bytes and keep the trailing command terminated.
+        if (ch == KEY_ALT_ENTER || ch == KEY_ALT_a)
+        {
+            const char *text=ch == KEY_ALT_ENTER ? active_panel->file_under_cursor : active_panel->path;
+            int length=strlen(text);
+            if (cmd_len+length+1 < CMD_MAX)
+            {
+                memmove(cmd+cursor_pos+length+1, cmd+cursor_pos, cmd_len-cursor_pos+1);
+                memcpy(cmd+cursor_pos, text, length);
+                cmd[cursor_pos+length]=ch == KEY_ALT_ENTER ? ' ' : '/';
+                cmd_len+=length+1;
+                cursor_pos+=length+1;
             }
         }
 
@@ -480,7 +400,8 @@ int main(int argc, char *argv[]) {
             endwin();
             initialize_ncurses();
             raw();
-            getch();
+            wint_t key;
+            get_wch(&key);
             init_screen();
             redraw_ui();
         }
@@ -495,35 +416,34 @@ int main(int argc, char *argv[]) {
             if (active_panel->search_mode == 1) {
                 continue_search_mode = 1;
                 if (strlen(active_panel->search_text) > 0) {
-                    active_panel->search_text[strlen(active_panel->search_text) - 1] = '\0';
+                    active_panel->search_text[text_previous(active_panel->search_text, strlen(active_panel->search_text))]='\0';
                     memcpy(active_panel->prev_search_text, active_panel->search_text, sizeof(active_panel->search_text));
                 }
             } else if (cursor_pos > 0) {
-                memmove(cmd + cursor_pos - 1, cmd + cursor_pos, cmd_len - cursor_pos);
-                cmd[--cmd_len] = '\0';
-                cursor_pos--;
+                int previous=text_previous(cmd, cursor_pos);
+                memmove(cmd+previous, cmd+cursor_pos, cmd_len-cursor_pos+1);
+                cmd_len-=cursor_pos-previous;
+                cursor_pos=previous;
             }
         }
 
 
         if (ch == KEY_DC) {
             if (cursor_pos < cmd_len) {
-                memmove(cmd + cursor_pos, cmd + cursor_pos + 1, cmd_len - cursor_pos - 1);
-                cmd[--cmd_len] = '\0';
+                wchar_t chars[CCHARW_MAX];
+                int width, bytes=text_cell(cmd+cursor_pos, cmd_len-cursor_pos, chars, &width);
+                memmove(cmd+cursor_pos, cmd+cursor_pos+bytes, cmd_len-cursor_pos-bytes+1);
+                cmd_len-=bytes;
             }
         }
 
 
-        if (ch == KEY_LEFT) {
-            if (cursor_pos > 0) {
-                cursor_pos--;
-            } else if (cmd_offset > 0) {
-                cmd_offset--;
-            }
-        }
+        if (ch == KEY_LEFT && cursor_pos > 0) cursor_pos=text_previous(cmd, cursor_pos);
 
         if (ch == KEY_RIGHT && cursor_pos < cmd_len) {
-            cursor_pos++;
+            wchar_t chars[CCHARW_MAX];
+            int width;
+            cursor_pos+=text_cell(cmd+cursor_pos, cmd_len-cursor_pos, chars, &width);
         }
 
         if (ch == KEY_UP) {
@@ -566,19 +486,18 @@ int main(int argc, char *argv[]) {
         }
 
 
-        if (isprint(ch)) {
+        if (input_text[0]) {
+            int bytes=strlen(input_text);
             if (active_panel->search_mode == 1) {
                 continue_search_mode = 1;
-                if (strlen(active_panel->search_text) < CMD_MAX - 1) {
-                    active_panel->search_text[strlen(active_panel->search_text) + 1] = 0;
-                    active_panel->search_text[strlen(active_panel->search_text)] = ch;
-                }
+                int length=strlen(active_panel->search_text);
+                if (length+bytes < CMD_MAX) memcpy(active_panel->search_text+length, input_text, bytes+1);
                 memcpy(active_panel->prev_search_text, active_panel->search_text, sizeof(active_panel->search_text));
-            } else if (cmd_len < CMD_MAX - 1) {
-                memmove(cmd + cursor_pos + 1, cmd + cursor_pos, cmd_len - cursor_pos);
-                cmd[cursor_pos] = ch;
-                cmd[++cmd_len] = '\0';
-                cursor_pos++;
+            } else if (cmd_len+bytes < CMD_MAX) {
+                memmove(cmd+cursor_pos+bytes, cmd+cursor_pos, cmd_len-cursor_pos+1);
+                memcpy(cmd+cursor_pos, input_text, bytes);
+                cmd_len+=bytes;
+                cursor_pos+=bytes;
             }
         }
 
@@ -649,17 +568,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Handle scrolling in command line
-        int max_cmd_display = COLS - prompt_length - 3;
-        if (cursor_pos - cmd_offset >= max_cmd_display) {
-            cmd_offset++;
-        } else if (cursor_pos - cmd_offset < 0 && cmd_offset > 0) {
-            cmd_offset--;
-        }
-
-        if (cmd_offset < 0) {
-                cmd_offset = 0;
-        }
     }
 
     cleanup();

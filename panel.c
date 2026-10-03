@@ -255,9 +255,12 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     }
 
     if (panel->search_mode == 1) {
-        // search input
+        // Keep the end of the UTF-8 search text visible inside the panel.
         wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN));
-        mvwprintw(win, height - 2, 1, "/%-*s", width - 1, panel->search_text);
+        mvwhline(win, height-2, 1, ' ', width);
+        mvwaddch(win, height-2, 1, '/');
+        int start=text_column(panel->search_text, strlen(panel->search_text))-width+1;
+        draw_text(win, height-2, 2, panel->search_text, start > 0 ? start : 0, width-1);
         wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
     } else {
         // print info for active file

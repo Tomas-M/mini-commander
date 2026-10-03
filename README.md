@@ -23,7 +23,8 @@ slax.org
   without launching an external program. Save in the editor with `F2`.
 - **UTF-8 support:** view and edit multilingual text, including wide characters
   and combining accents, with correct cursor movement and deletion. Dialog text
-  fields accept UTF-8, and panels display international file and directory names.
+  fields and the command line accept UTF-8, and panel prefix search supports
+  international file and directory names.
 - **Syntax highlighting:** basic highlighting for C source and headers (`.c`,
   `.h`) and shell scripts (`.sh`). Files starting with `#!/` also receive shell
   highlighting, even without an extension.
@@ -81,12 +82,13 @@ Usage:
 Use a UTF-8 terminal and locale to display international file and directory names
 correctly, for example `LC_ALL=C.UTF-8 ./mc`. Both builds use Unicode-capable
 ncurses (`ncursesw`), and panel labels are shortened without splitting UTF-8
-characters. The viewer, editor, and dialog text fields support UTF-8, including
-wide characters and combining accents. Editor search ignores letter case using
+characters. The viewer, editor, dialog text fields, command line, and panel
+prefix search support UTF-8, including wide characters and combining accents.
+Command-line navigation and deletion operate on complete display characters,
+and horizontal scrolling uses terminal columns. Editor search ignores letter case using
 the active locale. Files keep their original bytes unless edited; other text
 encodings are not converted automatically. Complex joined emoji sequences are
-not treated as a single character. The main command line and panel quick search
-still use byte-oriented input.
+not treated as a single character. Panel prefix search remains case-sensitive.
 
 For a small, fully static 32-bit x86 binary built with musl and ncurses, run
 `sh static/build.sh`. The script downloads its dependencies, builds and packs

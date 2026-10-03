@@ -73,6 +73,29 @@ int text_offset(const char *text, int length, int column)
     return offset;
 }
 
+// Draw complete UTF-8 cells in a column viewport without wrapping or emitting controls.
+void draw_text(WINDOW *win, int row, int x, const char *text, int start, int width)
+{
+    attr_t attributes;
+    short color;
+    wattr_get(win, &attributes, &color, NULL);
+    int length=strlen(text), column=0;
+    for (int offset=0; offset < length && column < start+width;)
+    {
+        wchar_t chars[CCHARW_MAX];
+        int cell_width;
+        offset+=text_cell(text+offset, length-offset, chars, &cell_width);
+        if (!iswprint(chars[0])) chars[0]=L'.';
+        if (column >= start && column+cell_width <= start+width)
+        {
+            cchar_t cell;
+            setcchar(&cell, chars, attributes, color, NULL);
+            mvwadd_wchnstr(win, row, x+column-start, &cell, 1);
+        }
+        column+=cell_width;
+    }
+}
+
 // Keep Unicode input separate from ncurses key codes, which overlap numerically.
 int read_text_key(WINDOW *win, char *text)
 {

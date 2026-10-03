@@ -8,6 +8,7 @@ int text_cell(const char *text, int length, wchar_t *chars, int *width);
 int text_previous(const char *text, int position);
 int text_column(const char *text, int length);
 int text_offset(const char *text, int length, int column);
+void draw_text(WINDOW *win, int row, int x, const char *text, int start, int width);
 int read_text_key(WINDOW *win, char *text);
 void shorten(char *name, int width, char *result);
 void update_panel(WINDOW *win, PanelProp *panel);

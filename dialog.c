@@ -2,6 +2,16 @@
 #include "types.h"
 #include "globals.h"
 
+// Format text into a caller-owned CMD_MAX buffer without overflowing it.
+char *format_text(char *buffer, const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, CMD_MAX, format, args);
+    va_end(args);
+    return buffer;
+}
+
 int lines(char * title)
 {
     if (title == NULL) return 0;

@@ -44,6 +44,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
 int countstats_operation(const char *src, const char *tgt, operationContext *context);
 int mkdir_recursive(const char *path, mode_t mode);
 int format_number(off_t num, char *str);
+char *format_text(char *buffer, const char *format, ...);
 
 // Macro to use shorten inline
 #define SHORTEN(name, width) ({ \
@@ -52,10 +53,7 @@ int format_number(off_t num, char *str);
     result_buf; \
 })
 
-#define SPRINTF(fmt, ...) ({ \
-    char tmp[CMD_MAX]; \
-    sprintf(tmp, fmt, ##__VA_ARGS__); \
-    tmp; \
-})
+// Compound literals remain valid until the calling block ends.
+#define SPRINTF(...) format_text((char[CMD_MAX]){0}, __VA_ARGS__)
 
 #endif // GLOBALS_H

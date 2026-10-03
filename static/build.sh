@@ -89,7 +89,8 @@ echo "Building terminal description tools..."
 echo "Building minimal ncurses $ncurses_version with embedded terminal descriptions..."
 (
     cd curses
-    "$ncurses_source/configure" --prefix="$prefix" \
+    # Install headers and the ncurses.h alias directly in our private prefix/include.
+    "$ncurses_source/configure" --prefix="$prefix" --enable-overwrite \
         --without-shared --without-debug --without-cxx --without-cxx-binding \
         --without-ada --without-tests --without-manpages --without-progs \
         --without-gpm --without-dlsym \

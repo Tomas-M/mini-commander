@@ -31,6 +31,7 @@ slax.org
   A plain click moves the cursor and clears the existing selection.
 - **Contextual function keys:** the bottom bar follows the active panel, viewer,
   or editor. `F7` searches in the viewer and editor; `Shift+F7` finds the next match.
+  Click a labeled button in this bar to invoke the same action as its function key.
 - **UTF-8 support:** view and edit multilingual text, including wide characters
   and combining accents, with correct cursor movement and deletion. Dialog text
   fields and the command line accept UTF-8, and panel prefix search supports
@@ -60,7 +61,12 @@ slax.org
   links are marked. Executables, selected archive formats, and source files
   have distinct colors. Copying a symbolic link copies the link itself.
 - **Mouse navigation:** select items, double-click to open directories or run
-  executables, and scroll with the wheel in supported terminals.
+  executables, and scroll with the wheel in supported terminals. Left dragging
+  moves the panel cursor; right clicking toggles a file's selection like `Insert`.
+  Right dragging marks or unmarks all crossed rows according to the first item,
+  keeping that choice for the whole drag. A drag stays in the panel where it began.
+  Dialog buttons such as OK, Cancel, Save, or the sorting choices accept left clicks;
+  clicking a text field focuses it and positions the cursor at the clicked character.
 - **Monochrome mode:** run `./mc -b` or `./mc --nocolor` to disable colors.
 
 ### Less obvious shortcuts

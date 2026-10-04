@@ -67,7 +67,7 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
     int total_buttons = 0;
     int total_button_width = 6;
     while (buttons[total_buttons] != NULL) {
-        total_button_width += strlen(buttons[total_buttons]) + 4;
+        total_button_width += text_column(buttons[total_buttons], strlen(buttons[total_buttons]), 1) + 4;
         total_buttons++;
     }
     total_button_width += 2 * (total_buttons - 1);
@@ -86,7 +86,7 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
     if (vertical_buttons) {
         int longest_button_width = 0;
         for (int i = 0; buttons[i] != NULL; i++) {
-            int button_width = strlen(buttons[i]) + 10;
+            int button_width = text_column(buttons[i], strlen(buttons[i]), 1) + 10;
             if (button_width > longest_button_width) {
                 longest_button_width = button_width;
             }
@@ -149,27 +149,29 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
 }
 
 
-void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt, int is_danger, int vertical_buttons) {
-    int width, height;
-    getmaxyx(win, height, width);
+typedef struct { int x, y, width; } dialog_button;
 
-    int total_buttons_width = 0;
-    int i = 0;
-    while (buttons[i] != NULL) {
-        total_buttons_width += strlen(buttons[i]) + 4;
-        i++;
+// Use the same terminal-cell bounds for drawing buttons and handling mouse clicks.
+static dialog_button dialog_button_bounds(WINDOW *win, char *title, char *buttons[], int index, int prompt, int vertical)
+{
+    int y=(prompt ? 4 : 3)+lines(title);
+    if (vertical) return (dialog_button){3, y+index, getmaxx(win)-6};
+    int total=-2, before=0;
+    for (int i=0; buttons[i]; i++)
+    {
+        int width=text_column(buttons[i], strlen(buttons[i]), 1)+6;
+        total+=width;
+        if (i < index) before+=width;
     }
-    total_buttons_width += 2 * (i - 1);
+    return (dialog_button){(getmaxx(win)-total)/2+before, y, text_column(buttons[index], strlen(buttons[index]), 1)+4};
+}
 
-    int cursor_pos = (width - total_buttons_width) / 2;
-    if (vertical_buttons) cursor_pos = 3;
+void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt, int is_danger, int vertical_buttons) {
     int move_cursor_pos_x = 0;
     int move_cursor_pos_y = 0;
 
-    // Adjust the y position based on whether a prompt is present
-    int y_pos = prompt_present ? 4 : 3;
-    i = 0;
-    while (buttons[i] != NULL) {
+    for (int i=0; buttons[i]; i++) {
+        dialog_button button=dialog_button_bounds(win, title, buttons, i, prompt_present, vertical_buttons);
         if (i == selected && !editing_prompt) {
             if (is_danger) {
                 wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
@@ -177,13 +179,15 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
             } else {
                 wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_BTN));
             }
-            move_cursor_pos_x = cursor_pos + 2;
-            move_cursor_pos_y = y_pos;
+            move_cursor_pos_x = button.x + 2;
+            move_cursor_pos_y = button.y;
         }
         if (vertical_buttons) {
-            mvwprintw(win, y_pos + lines(title), cursor_pos, " [%s] %-*s ", i == selected && !editing_prompt ? "x" : " ", width - 12, buttons[i]);
+            mvwprintw(win, button.y, button.x, " [%s] ", i == selected && !editing_prompt ? "x" : " ");
+            mvwhline(win, button.y, button.x+5, ' ', button.width-5);
+            draw_text(win, button.y, button.x+5, buttons[i], 0, button.width-6);
         } else {
-            mvwprintw(win, y_pos + lines(title), cursor_pos, "[ %s ]", buttons[i]);
+            mvwprintw(win, button.y, button.x, "[ %s ]", buttons[i]);
         }
         if (i == selected && !editing_prompt) {
             if (is_danger) {
@@ -193,17 +197,10 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
                 wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
             }
         }
-
-        if (vertical_buttons) {
-            y_pos += 1; // Move to the next line for vertical layout
-        } else {
-            cursor_pos += strlen(buttons[i]) + 6;
-        }
-        i++;
     }
 
     if (move_cursor_pos_x > 0 || move_cursor_pos_y > 0) {
-        wmove(win, move_cursor_pos_y + lines(title), move_cursor_pos_x);
+        wmove(win, move_cursor_pos_y, move_cursor_pos_x);
     }
 
     wrefresh(win);
@@ -225,6 +222,8 @@ void dialog_restore_screen() {
 int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is_danger, int vertical_buttons, int edit_prompt) {
     int prompt_is_present = prompt ? 1 : 0;
     int editing_prompt = prompt ? 1 : 0;
+    // Combine quick press/release pairs even when the editor requests raw drag events.
+    int saved_mouseinterval=mouseinterval(50);
 
     if (!prompt_is_present) {
         prompt = "";
@@ -241,7 +240,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
         buttons_count++;
     }
 
-    int ch;
+    int ch, pressed_button=-1;
     int cursor_position = strlen(prompt);
     int prompt_offset = 0;
     int width, height;
@@ -281,6 +280,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 
         char input_text[MB_LEN_MAX+1];
         ch=read_text_key(win, input_text);
+        if (ch != KEY_MOUSE) pressed_button=-1;
         switch (ch) {
             case KEY_LEFT:
                 if (editing_prompt && cursor_position > 0) {
@@ -328,6 +328,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
                break;
             case KEY_F(10):
             case 27:
+                mouseinterval(saved_mouseinterval);
                 delwin(win);
                 dialog_restore_screen();
                 return -1;
@@ -378,10 +379,45 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
                     prompt_modified = 1;
                 }
                 break;
+            case KEY_MOUSE:
+            {
+                MEVENT event;
+                if (getmouse(&event) != OK) break;
+                int clicked=event.bstate & (BUTTON1_CLICKED|BUTTON1_DOUBLE_CLICKED|BUTTON1_TRIPLE_CLICKED);
+                if (!clicked && !(event.bstate & (BUTTON1_PRESSED|BUTTON1_RELEASED))) break;
+                int hit=-1, x=event.x-getbegx(win), y=event.y-getbegy(win);
+                if (prompt_is_present && y == 2+lines(title) && x >= 3 && x < width-3)
+                {
+                    editing_prompt=prompt_modified=1;
+                    cursor_position=text_offset(prompt, strlen(prompt), prompt_offset+x-3, 1);
+                    pressed_button=-1;
+                    break;
+                }
+                for (int i=0; i < buttons_count; i++)
+                {
+                    dialog_button button=dialog_button_bounds(win, title, buttons, i, prompt_is_present, vertical_buttons);
+                    if (y == button.y && x >= button.x && x < button.x+button.width) { hit=i; break; }
+                }
+                if (event.bstate & BUTTON1_PRESSED)
+                {
+                    pressed_button=hit;
+                    if (hit >= 0) { selected=hit; editing_prompt=0; }
+                }
+                if (event.bstate & BUTTON1_RELEASED)
+                {
+                    clicked=hit >= 0 && hit == pressed_button;
+                    pressed_button=-1;
+                }
+                if (!clicked || hit < 0) break;
+                selected=hit;
+                editing_prompt=0;
+                // Fall through to the same action and cleanup as Enter.
+            }
             case '\n':
                 if (editing_prompt) {
                     selected = 0;
                 }
+                mouseinterval(saved_mouseinterval);
                 delwin(win);
                 dialog_restore_screen();
                 return selected + 1;

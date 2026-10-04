@@ -2,6 +2,92 @@
 #include "types.h"
 #include "globals.h"
 
+// Keep Insert and mouse marking consistent, including the panel's selection totals.
+void select_file(PanelProp *panel, FileNode *file, int selected)
+{
+    if (!strcmp(file->name, "..") || file->is_selected == selected) return;
+    file->is_selected=selected;
+    panel->num_selected_files+=selected ? 1 : -1;
+    if (!file->is_dir) panel->bytes_selected_files+=selected ? file->size : -file->size;
+}
+
+// A drag stays in its starting panel; right drags paint a fixed selection state.
+int panel_mouse(MEVENT *event, PanelMouse *mouse)
+{
+    WINDOW *win=NULL;
+    PanelProp *panel=NULL;
+    if (wenclose(win1, event->y, event->x)) { win=win1; panel=&left_panel; }
+    if (wenclose(win2, event->y, event->x)) { win=win2; panel=&right_panel; }
+    int index=-1;
+    if (win)
+    {
+        int y=event->y-getbegy(win), x=event->x-getbegx(win);
+        if (x > 0 && x < getmaxx(win)-1 && y >= 2 && y < getmaxy(win)-3)
+            index=panel->scroll_index+y-2;
+        if (index >= panel->files_count) index=-1;
+    }
+    int left=event->bstate & (BUTTON1_PRESSED|BUTTON1_CLICKED|BUTTON1_DOUBLE_CLICKED|BUTTON1_TRIPLE_CLICKED);
+    int right=event->bstate & (BUTTON3_PRESSED|BUTTON3_CLICKED|BUTTON3_DOUBLE_CLICKED|BUTTON3_TRIPLE_CLICKED);
+    int released=event->bstate & (BUTTON1_RELEASED|BUTTON3_RELEASED);
+    int clicked=event->bstate & (BUTTON1_CLICKED|BUTTON1_DOUBLE_CLICKED|BUTTON1_TRIPLE_CLICKED|BUTTON3_CLICKED|BUTTON3_DOUBLE_CLICKED|BUTTON3_TRIPLE_CLICKED);
+    int motion=event->bstate & REPORT_MOUSE_POSITION;
+    if (!mouse->button && !motion && (left || right) && index >= 0)
+    {
+        mouse->drag_panel=panel;
+        mouse->button=right ? 3 : 1;
+        mouse->last_index=index;
+        mouse->dragged=0;
+        FileNode *file=panel->files;
+        for (int i=0; i < index; i++) file=file->next;
+        mouse->mark=!file->is_selected;
+        active_panel=panel;
+    }
+    int action=KEY_MOUSE;
+    if (mouse->button)
+    {
+        if (index < 0 || panel != mouse->drag_panel) mouse->dragged=1;
+        else
+        {
+            if (index != mouse->last_index) mouse->dragged=1;
+            panel->selected_index=index;
+            if (mouse->button == 3)
+            {
+                // Fill skipped rows too, so fast motion cannot leave holes in a drag.
+                int start=index < mouse->last_index ? index : mouse->last_index;
+                int end=index > mouse->last_index ? index : mouse->last_index;
+                FileNode *file=panel->files;
+                for (int i=0; file && i <= end; i++, file=file->next)
+                    if (i >= start) select_file(panel, file, mouse->mark);
+            }
+            mouse->last_index=index;
+        }
+        if (released || clicked)
+        {
+            if (mouse->button == 1 && !mouse->dragged)
+            {
+                struct timeval now, elapsed;
+                gettimeofday(&now, NULL);
+                timersub(&now, &mouse->click_time, &elapsed);
+                int same_file=mouse->click_panel == panel && mouse->click_index == index;
+                int double_click=same_file && elapsed.tv_sec == 0 && elapsed.tv_usec < 300000;
+                if (double_click || (event->bstate & BUTTON1_DOUBLE_CLICKED)) action='\n';
+                mouse->click_panel=action == '\n' ? NULL : panel;
+                mouse->click_index=index;
+                mouse->click_time=now;
+            }
+            else mouse->click_panel=NULL;
+            mouse->button=0;
+        }
+    }
+    if (event->bstate & BUTTON4_PRESSED) active_panel->selected_index--;
+#ifdef BUTTON5_PRESSED
+    if (event->bstate & BUTTON5_PRESSED) active_panel->selected_index++;
+#endif
+    if (active_panel->selected_index < 0) active_panel->selected_index=0;
+    if (active_panel->selected_index >= active_panel->files_count) active_panel->selected_index=active_panel->files_count-1;
+    return action;
+}
+
 // Shorten by terminal columns, keeping multibyte characters and their accents intact.
 void shorten(char *name, int width, char *result) {
     result[0]='\0';

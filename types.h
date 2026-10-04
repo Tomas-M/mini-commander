@@ -54,6 +54,12 @@ typedef struct PanelProp {
     FileNode *files;
 } PanelProp;
 
+typedef struct {
+    PanelProp *drag_panel, *click_panel;
+    int button, mark, last_index, dragged, click_index;
+    struct timeval click_time;
+} PanelMouse;
+
 typedef struct file_lines {
     char *line;
     int line_length;
@@ -120,10 +126,6 @@ extern WINDOW *progress;
 extern struct utsname unameData;
 extern struct passwd *pw;
 extern const char *username;
-
-extern struct timeval last_click_time;
-extern struct timeval current_time;
-extern struct timeval diff_time;
 
 extern int cursor_pos;
 extern int cmd_offset;

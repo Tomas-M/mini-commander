@@ -28,6 +28,8 @@ void init_screen() {
     initialize_ncurses();
     refresh();
     mouseinterval(50);
+    mousemask(ALL_MOUSE_EVENTS|REPORT_MOUSE_POSITION, NULL);
+    mouse_tracking(1);
     ESCDELAY = 50;
     start_color();
     raw();
@@ -88,6 +90,7 @@ void init_screen() {
 void cleanup() {
     delwin(win1);
     delwin(win2);
+    mouse_tracking(0);
     endwin();
 }
 
@@ -97,6 +100,6 @@ void redraw_ui() {
    getmaxyx(stdscr, maxY, maxX);
 
    draw_windows(maxY, maxX);
-   draw_buttons(maxY, maxX, (const char *[]) {"Sort", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"});
+   draw_buttons(maxY, maxX, panel_buttons);
    update_cmd();
 }

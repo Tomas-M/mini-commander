@@ -441,10 +441,11 @@ int view_edit_file(char *filename, int editor_mode) {
     off_t mark_start=-1, mark_end=-1;
     off_t drag_start=-1;
     mmask_t saved_mousemask=0;
-    int saved_mouseinterval=0, mouse_tracking=0;
+    int saved_mouseinterval=0, pressed_button=0;
     char find_str[CMD_MAX] = {0};
     const char *editor_buttons[]={"Save", "Mark", "", "Copy", "Move", "Search", "Delete", "", "Quit"};
     const char *viewer_buttons[]={"", "Quit", "", "", "", "Search", "", "", "Quit"};
+    const char **buttons=editor_mode ? editor_buttons : viewer_buttons;
 
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);
@@ -483,10 +484,7 @@ int view_edit_file(char *filename, int editor_mode) {
         // Receive press, drag and release separately; restore panel mouse behavior on exit.
         mousemask(BUTTON1_PRESSED|BUTTON1_RELEASED|BUTTON1_CLICKED|REPORT_MOUSE_POSITION, &saved_mousemask);
         saved_mouseinterval=mouseinterval(0);
-        // Standard xterm profiles enable clicks only; request motion while a button is held.
-        const char *mouse_prefix=tigetstr("kmous");
-        mouse_tracking=mouse_prefix && (!strcmp(mouse_prefix, "\033[M") || !strcmp(mouse_prefix, "\033[<"));
-        if (mouse_tracking) { fputs("\033[?1002h", stdout); fflush(stdout); }
+        mouse_tracking(1);
     }
 
     // Byte positions identify edits; terminal columns are derived only for display/navigation.
@@ -528,7 +526,7 @@ int view_edit_file(char *filename, int editor_mode) {
             if (column+cursor_width > screen_start_col+max_x) screen_start_col=column+cursor_width-max_x;
         }
 
-        draw_buttons(max_y, max_x, editor_mode ? editor_buttons : viewer_buttons);
+        draw_buttons(max_y, max_x, buttons);
         wnoutrefresh(stdscr);
         werase(content_win);
         file_lines *shown=lines;
@@ -581,7 +579,15 @@ int view_edit_file(char *filename, int editor_mode) {
         refresh_screen(editor_mode);
 
         char input_text[MB_LEN_MAX+1];
+        MEVENT event;
         input=read_text_key(content_win, input_text);
+        if (input == KEY_MOUSE)
+        {
+            if (getmouse(&event) != OK) continue;
+            int key=button_key(&event, buttons, &pressed_button);
+            if (drag_start < 0) input=key;
+        }
+        else pressed_button=0;
         if (input != KEY_MOUSE) drag_start=-1;
         int target_column=-1;
         off_t edit_start=position, edit_end=position;
@@ -795,8 +801,7 @@ int view_edit_file(char *filename, int editor_mode) {
                 break;
             case KEY_MOUSE:
             {
-                MEVENT event;
-                if (!editor_mode || getmouse(&event) != OK) break;
+                if (!editor_mode) break;
                 int pressed=event.bstate & BUTTON1_PRESSED;
                 int released=event.bstate & (BUTTON1_RELEASED|BUTTON1_CLICKED);
                 int clicked=event.bstate & BUTTON1_CLICKED;
@@ -893,9 +898,9 @@ int view_edit_file(char *filename, int editor_mode) {
 close_editor:
     if (editor_mode)
     {
-        if (mouse_tracking) { fputs("\033[?1002l", stdout); fflush(stdout); }
         mousemask(saved_mousemask, NULL);
         mouseinterval(saved_mouseinterval);
+        mouse_tracking((saved_mousemask & REPORT_MOUSE_POSITION) != 0);
     }
     delwin(toprow_win);
     delwin(content_win);

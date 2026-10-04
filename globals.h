@@ -4,6 +4,11 @@
 void initialize_ncurses(void);
 void refresh_screen(int cursor_visibility);
 void draw_buttons(int maxY, int maxX, const char *const labels[9]);
+extern const char *const panel_buttons[9];
+int button_key(MEVENT *event, const char *const labels[9], int *pressed);
+void mouse_tracking(int enabled);
+void select_file(PanelProp *panel, FileNode *file, int selected);
+int panel_mouse(MEVENT *event, PanelMouse *mouse);
 void draw_windows(int maxY, int maxX);
 int text_cell(const char *text, int length, wchar_t *chars, int *width);
 int text_previous(const char *text, int position);

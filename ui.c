@@ -128,6 +128,8 @@ void refresh_screen(int cursor_visibility)
 }
 
 // Keep function keys in their usual slots and clip labels on narrow terminals.
+const char *const panel_buttons[9]={"Sort", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"};
+
 void draw_buttons(int maxY, int maxX, const char *const labels[9]) {
     attrset(A_NORMAL);
     move(maxY - 1, 0);
@@ -145,6 +147,35 @@ void draw_buttons(int maxY, int maxX, const char *const labels[9]) {
         mvaddnstr(maxY-1, x+length, labels[i], width-length);
     }
     attrset(A_NORMAL);
+}
+
+// Translate clicks on visible, active footer slots into their keyboard actions.
+int button_key(MEVENT *event, const char *const labels[9], int *pressed)
+{
+    int hit=0, columns=getmaxx(stdscr), footer=event->y == getmaxy(stdscr)-1;
+    for (int i=0; footer && i < 9; i++)
+        if (labels[i][0] && event->x >= i*columns/9 && event->x < (i+1)*columns/9-1) hit=KEY_F(i+2);
+    if ((event->bstate & BUTTON1_PRESSED) && !(event->bstate & REPORT_MOUSE_POSITION)) *pressed=hit ? hit : -1;
+    int clicked=event->bstate & (BUTTON1_CLICKED|BUTTON1_DOUBLE_CLICKED|BUTTON1_TRIPLE_CLICKED);
+    if (event->bstate & BUTTON1_RELEASED)
+    {
+        // With mouseinterval(0), ncurses can report a quick click as a release alone.
+        clicked=*pressed == 0 || *pressed == hit;
+        *pressed=0;
+    }
+    if (clicked && hit) { *pressed=0; return hit; }
+    return footer ? ERR : KEY_MOUSE;
+}
+
+// Standard xterm profiles report clicks only; request motion while a button is held.
+void mouse_tracking(int enabled)
+{
+    const char *prefix=tigetstr("kmous");
+    if (prefix && (!strcmp(prefix, "\033[M") || !strcmp(prefix, "\033[<")))
+    {
+        fputs(enabled ? "\033[?1002h" : "\033[?1002l", stdout);
+        fflush(stdout);
+    }
 }
 
 void draw_windows(int maxY, int maxX) {

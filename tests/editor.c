@@ -72,8 +72,12 @@ int test_read_key(WINDOW *win, char *text)
     while (event.key == -2 || event.key == -3)
     {
         int y=getcury(win), x=getcurx(win);
-        if (event.key == -2) assert(y == event.y && x == event.x);
-        else
+        if (event.key == -2 && (y != event.y || x != event.x))
+        {
+            fprintf(stderr, "%s: expected cursor %d,%d, got %d,%d\n", test_name, event.y, event.x, y, x);
+            abort();
+        }
+        if (event.key == -3)
         {
             char shown[80]={0};
             mvwinnstr(win, 0, 0, shown, strlen(event.text));
@@ -278,12 +282,20 @@ int main(void)
     check_editor("drag past bottom does not scroll", tall, tall, (Event[]){M(BUTTON1_PRESSED, 0, 10), M(REPORT_MOUSE_POSITION, 0, 99), AT(21, 0), TOP("row00"), M(BUTTON1_RELEASED, 0, 99), AT(21, 0), TOP("row00"), SAVE_QUIT});
     check_editor("drag past right edge does not scroll", wide, wide, (Event[]){M(BUTTON1_PRESSED, 77, 1), M(REPORT_MOUSE_POSITION, 99, 1), AT(0, 78), TOP("START"), M(BUTTON1_RELEASED, 99, 1), AT(0, 78), TOP("START"), SAVE_QUIT});
     check_editor("clipped tab keeps viewport on mouse input", clipped, clipped, (Event[]){K(KEY_END), TOP("--->"), M(BUTTON1_PRESSED, 0, 1), AT(0, 0), TOP("--->"), M(BUTTON1_RELEASED, 0, 1), AT(0, 0), TOP("--->"), SAVE_QUIT});
+    check_editor("footer mark copy delete keeps cursor and original block", "abc", "bca", (Event[]){M(BUTTON1_CLICKED, 10, 23), K(KEY_RIGHT), M(BUTTON1_CLICKED, 10, 23), K(KEY_END), M(BUTTON1_CLICKED, 28, 23), AT(0, 3), M(BUTTON1_CLICKED, 55, 23), AT(0, 0), M(BUTTON1_CLICKED, 2, 23), M(BUTTON1_CLICKED, 75, 23), K(-1)});
+    check_editor("footer move keeps insertion cursor", "abc", "bca", (Event[]){K(KEY_F(3)), K(KEY_RIGHT), K(KEY_F(3)), K(KEY_END), M(BUTTON1_PRESSED, 37, 23), M(BUTTON1_RELEASED, 37, 23), AT(0, 2), SAVE_QUIT});
+    check_editor("fast footer release saves", "abc", "Xabc", (Event[]){T("X"), M(BUTTON1_RELEASED, 2, 23), M(BUTTON1_RELEASED, 75, 23), K(-1)});
+    check_editor("footer gaps and inactive slots do nothing", "abc", "Xabc", (Event[]){M(BUTTON1_CLICKED, 18, 23), M(BUTTON1_CLICKED, 64, 23), M(BUTTON1_CLICKED, 79, 23), M(BUTTON3_CLICKED, 75, 23), T("X"), SAVE_QUIT});
+    check_editor("content drag onto footer does not activate delete", "abc\ndef", "abc\ndef", (Event[]){M(BUTTON1_PRESSED, 0, 1), M(REPORT_MOUSE_POSITION, 55, 23), M(BUTTON1_RELEASED, 55, 23), SAVE_QUIT});
+    check_editor("footer drag to another button does not activate", "abc", "abc", (Event[]){M(BUTTON1_PRESSED, 2, 23), M(REPORT_MOUSE_POSITION, 75, 23), M(BUTTON1_RELEASED, 75, 23), SAVE_QUIT});
     editing=0;
     check_editor("viewer footer and read-only", "abc\ndef", "abc\ndef", (Event[]){K(KEY_F(5)), K(KEY_F(6)), K(KEY_F(8)), T("x"), K(KEY_RESIZE), K(KEY_F(3)), K(-1)});
+    check_editor("viewer footer click and resize", "abc", "abc", (Event[]){M(BUTTON1_CLICKED, 2, 23), M(BUTTON1_CLICKED, 55, 23), K(KEY_RESIZE), M(BUTTON1_CLICKED, 13, 19), K(-1)});
+    check_editor("viewer footer quit", "abc", "abc", (Event[]){M(BUTTON1_CLICKED, 75, 23), K(-1)});
     endwin();
     delscreen(screen);
     fclose(input);
     fclose(output);
-    puts("Editor: 10000 range edits, allocation failures, tab/selection rendering and 34 input sequences passed.");
+    puts("Editor: 10000 range edits, allocation failures, tab/selection rendering and 42 input sequences passed.");
     return 0;
 }

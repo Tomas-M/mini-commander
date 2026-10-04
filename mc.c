@@ -14,10 +14,6 @@ struct utsname unameData;
 struct passwd *pw;
 const char *username;
 
-struct timeval last_click_time = {0};
-struct timeval current_time = {0};
-struct timeval diff_time = {0};
-
 int cursor_pos = 0;
 int cmd_offset = 0; // Horizontal scroll in terminal columns; cursor_pos stays a byte offset.
 int prompt_length = 0;
@@ -78,12 +74,13 @@ int main(int argc, char *argv[]) {
     init_screen();
 
     MEVENT event;
+    PanelMouse mouse={0};
+    int pressed_button=0;
 
     uname(&unameData);
     pw = getpwuid(getuid());
     username = pw->pw_name;
 
-    mousemask(ALL_MOUSE_EVENTS, NULL);
     redraw_ui(); // initial screen
 
     while (1) {
@@ -97,6 +94,16 @@ int main(int argc, char *argv[]) {
         refresh_screen(1);
         int visible_items = getmaxy(win1) - 5;
 
+        char input_text[MB_LEN_MAX+1];
+        int ch=read_text_key(stdscr, input_text);
+        if (ch == KEY_MOUSE)
+        {
+            if (getmouse(&event) != OK) continue;
+            ch=button_key(&event, panel_buttons, &pressed_button);
+            if (mouse.button || ch == KEY_MOUSE) ch=panel_mouse(&event, &mouse);
+        }
+        if (ch != KEY_MOUSE && ch != ERR) { pressed_button=0; mouse=(PanelMouse){0}; }
+
         // get current file under cursor
         FileNode *current = active_panel->files;
         int index = 0;
@@ -108,9 +115,6 @@ int main(int argc, char *argv[]) {
         memset(active_panel->file_under_cursor, 0, CMD_MAX);
         strncpy(active_panel->file_under_cursor, current->name, strlen(current->name));
         chdir(active_panel->path);
-
-        char input_text[MB_LEN_MAX+1];
-        int ch=read_text_key(stdscr, input_text);
 
         if (ch == 0 && !input_text[0]) { // Ctrl+Space, not printable Unicode input.
             // TODO: fix when files are selected
@@ -283,47 +287,6 @@ int main(int argc, char *argv[]) {
             redraw_ui();
         }
 
-        if (ch == KEY_MOUSE) { // handle mouse events
-            if (getmouse(&event) == OK) {
-                if (event.bstate & BUTTON1_PRESSED) {
-                    // Determine which window was clicked and set the active panel
-                    if (wenclose(win1, event.y, event.x)) {
-                        active_panel = &left_panel;
-                    } else if (wenclose(win2, event.y, event.x)) {
-                        active_panel = &right_panel;
-                    }
-
-                    // Select item by mouse click
-                    int index = active_panel->scroll_index + event.y - 2;
-                    if (index >= 0 && index < active_panel->files_count) {
-                        active_panel->selected_index = index;
-                    }
-                }
-
-                if (event.bstate & BUTTON1_RELEASED || event.bstate & BUTTON1_CLICKED || event.bstate & BUTTON1_DOUBLE_CLICKED) {
-                   gettimeofday(&current_time, NULL);
-                   timersub(&current_time, &last_click_time, &diff_time);
-                   if (diff_time.tv_sec == 0 && diff_time.tv_usec < 300000) {
-                       // Double click finished
-                       ch = '\n';
-                   }
-                   last_click_time = current_time;
-                }
-
-                // Handle mouse wheel scrolling
-                if (event.bstate & BUTTON4_PRESSED) {
-                    active_panel->selected_index--;
-                }
-                // Older ncurses mouse interfaces have no fifth-button event.
-#ifdef BUTTON5_PRESSED
-                else if (event.bstate & BUTTON5_PRESSED) {
-                    active_panel->selected_index++;
-                }
-#endif
-            }
-        }
-
-
         // Insert complete filename/path bytes and keep the trailing command terminated.
         if (ch == KEY_ALT_ENTER || ch == KEY_ALT_a)
         {
@@ -377,8 +340,9 @@ int main(int argc, char *argv[]) {
             }
 
             if (cmd_len > 0) {
-                if (strcmp(cmd, "exit") == 0) exit(0);
+                if (strcmp(cmd, "exit") == 0) break;
 
+                mouse_tracking(0);
                 endwin();  // End ncurses mode
                 printf("%s@%s:%s# %s\n", username, unameData.nodename, active_panel->path, cmd);
                 if (run_selected_file)
@@ -400,6 +364,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (ch == 15) {  // Ctrl+O
+            mouse_tracking(0);
             endwin();
             initialize_ncurses();
             raw();
@@ -480,11 +445,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (ch == KEY_IC) {  // Insert key
-            if (current && strcmp(current->name, "..") != 0) {
-                current->is_selected = !current->is_selected;
-                if (!current->is_dir) active_panel->bytes_selected_files += current->is_selected ? current->size : -1 * current->size;
-                active_panel->num_selected_files += current->is_selected ? 1 : -1;
-            }
+            if (current) select_file(active_panel, current, !current->is_selected);
             active_panel->selected_index++;
         }
 

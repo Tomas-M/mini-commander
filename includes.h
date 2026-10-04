@@ -9,7 +9,6 @@
 #include <limits.h>
 #include <ncurses.h>
 #include <pwd.h>
-#include <regex.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>

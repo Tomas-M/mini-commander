@@ -180,16 +180,99 @@ void free_file_lines(file_lines *head) {
     }
 }
 
-void free_pattern_regexes(PatternColorPair* patterns, int num_patterns) {
-    for (int i = 0; i < num_patterns; i++) {
-        regfree(&patterns[i].regex);  // Free each compiled regex
+// Match the Unicode word boundary used by the former keyword expressions.
+static int highlight_word(const char *text)
+{
+    wchar_t ch;
+    mbstate_t state={0};
+    size_t bytes=mbrtowc(&ch, text, strnlen(text, MB_CUR_MAX), &state);
+    return bytes > 0 && bytes <= MB_CUR_MAX && (ch == L'_' || iswalnum(ch));
+}
+
+// Find a fixed keyword, rejecting suffixes such as "integer" or "int中文".
+static int highlight_keyword(const char *text, const char *words)
+{
+    while (*words)
+    {
+        int length=strcspn(words, " ");
+        if (!strncmp(text, words, length) && !highlight_word(text+length)) return length;
+        words+=length;
+        if (*words) words++;
     }
+    return 0;
+}
+
+// Recognize the existing C/shell rules in priority order, including greedy spans.
+static int highlight_token(const char *text, int syntax, int *attributes)
+{
+    int length=0, color=COLOR_WHITE_ON_BLUE, bold=0;
+    const char *end;
+    if (*text && (syntax & SYNTAX_C))
+    {
+        if (*text == '"' && (end=strrchr(text+1, '"')))
+            { length=end-text+1; color=COLOR_GREEN_ON_BLUE; }
+        else if (!strncmp(text, "#include", 8) || !strncmp(text, "#define", 7))
+            { length=strlen(text); color=COLOR_RED_ON_BLUE; bold=A_BOLD; }
+        else if (!strncmp(text, "//", 2))
+            { length=strlen(text); color=COLOR_YELLOW_ON_BLUE; }
+        // The former musl expression also accepts buffer ends as word boundaries.
+        else if (!strncmp(text, "...", 3) && (!text[3] || highlight_word(text+3)))
+            { length=3; color=COLOR_YELLOW_ON_BLUE; bold=A_BOLD; }
+        else if ((length=highlight_keyword(text, "auto break case char const continue default do double else enum extern float for goto if int long register return short signed sizeof static struct switch typedef union unsigned void volatile while asm inline wchar_t")))
+            { color=COLOR_YELLOW_ON_BLUE; bold=A_BOLD; }
+        else if (strchr("!%=*+-></", *text) || !strncmp(text, "&&", 2) || !strncmp(text, "||", 2))
+        {
+            length=1; color=COLOR_YELLOW_ON_BLUE; bold=A_BOLD;
+            const char *pairs="==!=&&->||";
+            for (int i=0; pairs[i]; i+=2)
+                if (text[0] == pairs[i] && text[1] == pairs[i+1]) length=2;
+        }
+        else if (strchr("(){},:?[]", *text))
+            { length=1; color=COLOR_CYAN_ON_BLUE; }
+        else if (strchr(";&^~|", *text))
+            { length=1; color=COLOR_MAGENTA_ON_BLUE; bold=A_BOLD; }
+    }
+    if (*text && !length && (syntax & SYNTAX_SHELL))
+    {
+        if (!strncmp(text, "#!/", 3))
+            { length=strlen(text); color=COLOR_CYAN_ON_BLACK; }
+        else if (*text == '#')
+            { length=strlen(text); color=COLOR_YELLOW_ON_BLUE; }
+        else if (strchr(";{}", *text))
+            { length=1; color=COLOR_CYAN_ON_BLUE; bold=A_BOLD; }
+        else if (*text == '$')
+        {
+            length=1; color=COLOR_GREEN_ON_BLUE; bold=A_BOLD;
+            if ((text[1] == '(' || text[1] == '{') && (end=strrchr(text+2, text[1] == '(' ? ')' : '}')))
+                { length=end-text+1; bold=0; }
+            else if (text[1] && strchr("*@#?-$_!0123456789", text[1]))
+                { length=2; color=COLOR_RED_ON_BLUE; }
+            else length+=strspn(text+1, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
+        }
+        else if ((text[0] == '1' || text[0] == '2') && text[1] == '>')
+        {
+            length=2; color=COLOR_RED_ON_BLUE; bold=A_BOLD;
+            if (text[2] == '&' && text[3] == (text[0] == '1' ? '2' : '1')) length=4;
+        }
+        else
+        {
+            if (!strncmp(text, "function", 8) && !highlight_word(text+8))
+                for (const char *next=text+8; (next=strstr(next, "()")); next+=2) length=next-text+2;
+            int name=strspn(text, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_");
+            if (!length && name && !strncmp(text+name, "()", 2)) length=name+2;
+            if (length) { color=COLOR_MAGENTA_ON_BLUE; bold=A_BOLD; }
+            else if ((length=highlight_keyword(text, "break case clear continue declare done do echo elif else esac exit export fi for getopts if in read return select set shift source then trap until unset wait while")))
+                { color=COLOR_YELLOW_ON_BLUE; bold=A_BOLD; }
+        }
+    }
+    *attributes=COLOR_PAIR(color)|bold;
+    return length;
 }
 
 // Render complete UTF-8 cells and clip by columns without wrapping into the next row.
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, PatternColorPair* patterns, int num_patterns)
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax)
 {
-    int row=getcury(win), column=0, match_end=0, color=COLOR_PAIR(COLOR_WHITE_ON_BLUE), bold=0;
+    int row=getcury(win), column=0, match_end=0, attributes=COLOR_PAIR(COLOR_WHITE_ON_BLUE);
     char *text=malloc(line->line_length+1);
     memcpy(text, line->line, line->line_length);
     text[line->line_length]='\0';
@@ -198,34 +281,22 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         wchar_t chars[CCHARW_MAX];
         int width, bytes=text_cell(text+offset, line->line_length-offset, chars, &width);
         if (offset >= match_end)
-        {
-            color=COLOR_PAIR(COLOR_WHITE_ON_BLUE);
-            bold=0;
-            regmatch_t match;
-            for (int i=0; i < num_patterns; i++)
-                if (regexec(&patterns[i].regex, text+offset, 1, &match, 0) == 0 && match.rm_so == 0 && match.rm_eo > 0)
-                {
-                    match_end=offset+match.rm_eo;
-                    color=patterns[i].color_pair;
-                    bold=patterns[i].is_bold ? A_BOLD : 0;
-                    break;
-                }
-        }
+            match_end=offset+highlight_token(text+offset, syntax, &attributes);
         if (column >= current_col && column+width <= current_col+max_x)
         {
-            int attributes=color|bold;
+            int cell_attributes=attributes;
             if (chars[0] == L'\t')
             {
                 chars[0]=L'>';
-                attributes=COLOR_PAIR(COLOR_CYAN_ON_BLUE);
+                cell_attributes=COLOR_PAIR(COLOR_CYAN_ON_BLUE);
             }
             else if (!iswprint(chars[0]))
             {
                 chars[0]=editor_mode && chars[0] < 32 ? L'@'+chars[0] : L'.';
-                if (editor_mode) attributes=COLOR_PAIR(COLOR_WHITE_ON_RED);
+                if (editor_mode) cell_attributes=COLOR_PAIR(COLOR_WHITE_ON_RED);
             }
             cchar_t cell;
-            setcchar(&cell, chars, attributes & ~A_COLOR, PAIR_NUMBER(attributes), NULL);
+            setcchar(&cell, chars, cell_attributes & ~A_COLOR, PAIR_NUMBER(cell_attributes), NULL);
             mvwadd_wchnstr(win, row, column-current_col, &cell, 1);
         }
         column+=width;
@@ -261,8 +332,7 @@ int view_edit_file(char *filename, int editor_mode) {
     int screen_start_col = 0;
     int cursor_row = 0;
     int is_modified = 0;
-    PatternColorPair patterns[100] = {0};
-    int num_patterns = 0;
+    int syntax=0;
     char find_str[CMD_MAX] = {0};
 
     // Get the screen dimensions
@@ -297,35 +367,8 @@ int view_edit_file(char *filename, int editor_mode) {
 
     if (editor_mode)
     {
-        // Syntax highlighting for editor mode
-        if (file_type && (strcmp(file_type, ".c") == 0 || strcmp(file_type, ".h") == 0)) {
-            patterns[num_patterns++] = (PatternColorPair) {"\".*\"", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"^(#include|#define).*$", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"//.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"\\b(auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|register|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while|asm|inline|wchar_t|[.][.][.])\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"!|%|==|!=|&&|[*]|->|[+]|-|[|][|]|=|>|<|/", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"[(){},:?]|\\[|\\]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 0, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"[;&^~|]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, {0}};
-        }
-
-        if ((file_type && (strcmp(file_type, ".sh") == 0)) || (lines != NULL && lines->line_length > 3 && strncmp(lines->line, "#!/", 3) == 0)) {
-            patterns[num_patterns++] = (PatternColorPair) {"^#!/.*", COLOR_PAIR(COLOR_CYAN_ON_BLACK), 0, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"#.*$", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 0, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"[;{}]", COLOR_PAIR(COLOR_CYAN_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$[(].*[)]|\\$[{].*[}]", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 0, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$[*]|\\$@|\\$#|\\$[?]|\\$-|\\$\\$|\\$!|\\$_", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"2>&1|1>&2|2>|1>", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$[0123456789]", COLOR_PAIR(COLOR_RED_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$[a-zA-Z0-9_]+", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"\\$", COLOR_PAIR(COLOR_GREEN_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"\\bfunction\\b.*[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"[a-zA-Z0-9_]+[(][)]", COLOR_PAIR(COLOR_MAGENTA_ON_BLUE), 1, {0}};
-            patterns[num_patterns++] = (PatternColorPair) {"\\b(break|case|clear|continue|declare|done|do|echo|elif|else|esac|exit|export|fi|for|getopts|if|in|read|return|select|set|shift|source|then|trap|until|unset|wait|while)\\b", COLOR_PAIR(COLOR_YELLOW_ON_BLUE), 1, {0}};
-        }
-
-        for (int i = 0; i < num_patterns; i++) {
-            regcomp(&patterns[i].regex, patterns[i].pattern, REG_EXTENDED);
-    }
+        if (file_type && (!strcmp(file_type, ".c") || !strcmp(file_type, ".h"))) syntax|=SYNTAX_C;
+        if ((file_type && !strcmp(file_type, ".sh")) || (lines->line_length > 3 && !strncmp(lines->line, "#!/", 3))) syntax|=SYNTAX_SHELL;
     }
 
     // Byte positions identify edits; terminal columns are derived only for display/navigation.
@@ -361,7 +404,7 @@ int view_edit_file(char *filename, int editor_mode) {
         for (; shown && shown_rows < max_y-2; shown_rows++, shown=shown->next)
         {
             wmove(content_win, shown_rows, 0);
-            display_line(content_win, shown, max_x, screen_start_col, editor_mode, patterns, num_patterns);
+            display_line(content_win, shown, max_x, screen_start_col, editor_mode, syntax);
         }
         werase(toprow_win);
         if (editor_mode)
@@ -633,7 +676,6 @@ close_editor:
     delwin(toprow_win);
     delwin(content_win);
     free_file_lines(lines);
-    free_pattern_regexes(patterns, num_patterns);
     return 0;
 }
 

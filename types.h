@@ -104,13 +104,8 @@ enum operationResult {
 typedef int (*OperationFunc)(const char *, const char *, operationContext *);
 
 
-// Define a struct to pair regex patterns with their associated colors.
-typedef struct {
-    char *pattern;
-    int color_pair;
-    int is_bold;
-    regex_t regex;
-} PatternColorPair;
+// Both rule sets apply to C files that also start with a shell shebang.
+enum { SYNTAX_C=1, SYNTAX_SHELL=2 };
 
 
 extern PanelProp left_panel;

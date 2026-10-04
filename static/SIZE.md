@@ -21,13 +21,29 @@ experiments are not cumulative; the combined rows say which changes they use.
 | Reduced ncurses + integer parsers + i386 application + gold | 267,436 | 116,348 |
 | Same, with i386 code generation for ncurses too | 267,436 | 115,260 |
 | Reduced ncurses + integer parsers + direct-object LTO + i386 code | 250,996 | 110,308 |
-| Same, with `--ultra-brute` (selected) | 250,996 | 110,244 |
+| Same, with `--ultra-brute` | 250,996 | 110,244 |
 | Same, with gold and `--ultra-brute` | 251,052 | 110,236 |
+| BFD + `--ultra-brute` + fixed-rule highlighter (selected) | 226,420 | 99,656 |
 
-The selected configuration saves **13,304 bytes (10.8%)** over the original
+The selected configuration saves **23,892 bytes (19.3%)** over the original
 packed binary. It retains UTF-8, syntax highlighting, mouse support, scrolling
 optimizations, all eight embedded terminal descriptions, and musl's default
-`mallocng` allocator. The application source is unchanged.
+`mallocng` allocator. Replacing the regex highlighter alone saves **10,588 bytes
+(9.6%)** relative to the 110,244-byte build at commit `e805f62`.
+
+## Fixed-rule syntax highlighting
+
+The editor's 19 hardcoded C/shell expressions are now recognized by a small
+scanner in `view_edit.c`. There is no runtime regex compilation or regex state
+to free, and `regcomp`, `regexec`, `regfree`, and their matching engine are no
+longer linked. Keyword boundaries still recognize Unicode letters and digits.
+The scanner preserves rule priority, greedy spans, colors, bold attributes,
+and the combined C/shell rules for a C file starting with a shell shebang.
+
+The baseline was rebuilt with the cached libraries and matched the previous
+110,244-byte binary exactly. The replacement was then compiled with the same
+compiler, libraries, flags, and UPX settings, so the comparison isolates this
+source change. Before compression, the ELF shrank by 24,576 bytes.
 
 ## Why these changes help
 
@@ -54,8 +70,8 @@ extended capabilities used by the terminal profiles remain available.
 
 The `-march=i386` choice concerns code generation for ncurses and the application,
 not the minimum CPU for the whole executable: musl still targets i686. UPX's
-`--ultra-brute` saved 64 bytes over `--best --lzma` for the selected ELF and takes
-longer to pack.
+`--ultra-brute` saved 64 bytes over `--best --lzma` in the 110,244-byte build and
+takes longer to pack.
 
 ## Other experiments and tradeoffs
 
@@ -76,9 +92,8 @@ longer to pack.
   completing and testing `system()` signal semantics before adoption.
 - A diagnostic baseline with regex highlighting stubbed out shrank from 123,548
   to 111,396 bytes. That binary loses highlighting and is not a release
-  candidate. Replacing the general POSIX regex engine with a small lexer for
-  the fixed C/shell rules is the next substantial opportunity; its eventual
-  saving must be measured after preserving highlighting behavior.
+  candidate. The fixed-rule scanner above realizes most of that saving while
+  keeping highlighting enabled.
 - Disabling both ncurses hashmap scrolling and scroll hints failed to compile
   with wide characters in ncurses 6.6. Those optimizations remain enabled.
 
@@ -87,8 +102,18 @@ longer to pack.
 The selected settings are reproduced by `sh static/build.sh`; it verifies archive
 hashes, applies the patch to a fresh source tree, checks ELF32/static linking,
 tests UPX integrity, and runs both unpacked and packed executables.
-The fresh build matched the selected experimental binary byte for byte
+The earlier fresh library build matched its experimental binary byte for byte
 (SHA-256 `eb9ffa08255fda9469d04713362ab14960054404d9fc818be263452118ae098d`).
+The fixed-rule build has SHA-256
+`0ca45137c11d2be518baa425a269974950d9ce41546fc9ab11164ca38cc4223f`.
+
+[`tests/highlight.c`](../tests/highlight.c) compares the actual scanner with the
+original expressions using musl's regex implementation. All 187,860 comparisons
+passed, including overlapping rules, greedy matches, Unicode word boundaries,
+and strings ending at a protected memory page. Separate ncurses cell checks
+verified colors, bold text, wide characters, tabs, horizontal clipping, and
+unhighlighted viewer output. The reference regex code is only in the test;
+neither normal nor static application builds include it.
 
 QEMU pseudo-terminal tests cover all eight terminal profiles plus the unknown
 terminal fallback, resize handling, UTF-8 editor save, command editing and panel

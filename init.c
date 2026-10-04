@@ -97,6 +97,6 @@ void redraw_ui() {
    getmaxyx(stdscr, maxY, maxX);
 
    draw_windows(maxY, maxX);
-   draw_buttons(maxY, maxX);
+   draw_buttons(maxY, maxX, (const char *[]) {"Sort", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"});
    update_cmd();
 }

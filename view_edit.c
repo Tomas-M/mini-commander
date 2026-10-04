@@ -180,6 +180,104 @@ void free_file_lines(file_lines *head) {
     }
 }
 
+// Resolve a file byte position, treating each line separator as one byte.
+static file_lines *line_at_position(file_lines *line, off_t *position, int *row)
+{
+    if (row) *row=0;
+    while (line->next && *position > line->line_length)
+    {
+        *position-=line->line_length+1;
+        line=line->next;
+        if (row) (*row)++;
+    }
+    return line;
+}
+
+// Copy a half-open byte range, including embedded NULs and line separators.
+static void copy_text_range(file_lines *lines, off_t start, off_t end, char *text)
+{
+    off_t length=end-start;
+    file_lines *line=line_at_position(lines, &start, NULL);
+    while (length)
+    {
+        int bytes=line->line_length-start;
+        if (bytes > length) bytes=length;
+        memcpy(text, line->line+start, bytes);
+        text+=bytes;
+        length-=bytes;
+        if (!length) break;
+        *text++='\n';
+        length--;
+        line=line->next;
+        start=0;
+    }
+}
+
+// Build replacement lines before changing the file, so allocation failure loses no data.
+static int replace_text_range(file_lines *lines, off_t start, off_t end, const char *text, size_t length, off_t *num_lines)
+{
+    file_lines *first=line_at_position(lines, &start, NULL);
+    file_lines *last=line_at_position(lines, &end, NULL);
+    size_t total=start+length+last->line_length-end;
+    char *data=malloc(total+1);
+    if (!data) return -1;
+    memcpy(data, first->line, start);
+    if (length) memcpy(data+start, text, length);
+    memcpy(data+start+length, last->line+end, last->line_length-end);
+
+    file_lines *head=NULL, *tail=NULL;
+    off_t added=0;
+    for (size_t offset=0;;)
+    {
+        char *newline=memchr(data+offset, '\n', total-offset);
+        size_t bytes=newline ? (size_t)(newline-data)-offset : total-offset;
+        if (bytes > INT_MAX) { errno=EFBIG; goto failed; }
+        file_lines *next=malloc(sizeof(*next));
+        if (!next) goto failed;
+        next->line=malloc(bytes+1);
+        if (!next->line) { free(next); goto failed; }
+        memcpy(next->line, data+offset, bytes);
+        next->line_length=bytes;
+        next->next=NULL;
+        if (tail) tail->next=next;
+        else head=next;
+        tail=next;
+        added++;
+        if (!newline) break;
+        offset+=bytes+1;
+    }
+    file_lines *after=last->next, *old=first->next;
+    free(first->line);
+    (*num_lines)--;
+    while (old != after)
+    {
+        file_lines *next=old->next;
+        free(old->line);
+        free(old);
+        old=next;
+        (*num_lines)--;
+    }
+    tail->next=after;
+    *first=*head;
+    free(head);
+    free(data);
+    *num_lines+=added;
+    return 0;
+
+failed:
+    free_file_lines(head);
+    free(data);
+    return -1;
+}
+
+// Keep a mark attached to its original text when surrounding bytes are edited.
+static off_t move_mark(off_t mark, off_t start, off_t end, size_t length, int right_affinity)
+{
+    if (mark < start) return mark;
+    if (mark > end) return mark+length-(end-start);
+    return start+(right_affinity ? length : 0);
+}
+
 // Match the Unicode word boundary used by the former keyword expressions.
 static int highlight_word(const char *text)
 {
@@ -270,7 +368,7 @@ static int highlight_token(const char *text, int syntax, int *attributes)
 }
 
 // Render complete UTF-8 cells and clip by columns without wrapping into the next row.
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax)
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax, off_t mark_start, off_t mark_end)
 {
     int row=getcury(win), column=0, match_end=0, attributes=COLOR_PAIR(COLOR_WHITE_ON_BLUE);
     char *text=malloc(line->line_length+1);
@@ -295,6 +393,8 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
                 chars[0]=editor_mode && chars[0] < 32 ? L'@'+chars[0] : L'.';
                 if (editor_mode) cell_attributes=COLOR_PAIR(COLOR_WHITE_ON_RED);
             }
+            if (offset < mark_end && offset+bytes > mark_start)
+                cell_attributes=COLOR_PAIR(COLOR_BLACK_ON_CYAN)|(color_enabled ? 0 : A_REVERSE);
             cchar_t cell;
             setcchar(&cell, chars, cell_attributes & ~A_COLOR, PAIR_NUMBER(cell_attributes), NULL);
             mvwadd_wchnstr(win, row, column-current_col, &cell, 1);
@@ -302,6 +402,10 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         column+=width;
         offset+=bytes;
     }
+    // Make a selected newline visible, including on otherwise empty lines.
+    if (line->next && mark_start <= line->line_length && mark_end > line->line_length)
+        if (column >= current_col && column < current_col+max_x)
+            mvwaddch(win, row, column-current_col, ' '|COLOR_PAIR(COLOR_BLACK_ON_CYAN)|(color_enabled ? 0 : A_REVERSE));
     free(text);
 }
 
@@ -333,7 +437,10 @@ int view_edit_file(char *filename, int editor_mode) {
     int cursor_row = 0;
     int is_modified = 0;
     int syntax=0;
+    off_t mark_start=-1, mark_end=-1;
     char find_str[CMD_MAX] = {0};
+    const char *editor_buttons[]={"Save", "Mark", NULL, "Copy", "Move", "Search", "Delete", NULL, "Quit"};
+    const char *viewer_buttons[]={NULL, "Quit", NULL, NULL, NULL, "Search", NULL, NULL, "Quit"};
 
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);
@@ -385,6 +492,15 @@ int view_edit_file(char *filename, int editor_mode) {
         int column=text_column(current_line->line, cursor_byte);
         // Insertions and line joins can attach existing combining marks to the preceding character.
         cursor_byte=text_offset(current_line->line, current_line->line_length, column);
+        off_t position=seek+cursor_byte, selected_start=mark_start;
+        off_t selected_end=mark_end >= 0 ? mark_end : position;
+        if (selected_start >= 0 && selected_start > selected_end)
+        {
+            off_t swap=selected_start;
+            selected_start=selected_end;
+            selected_end=swap;
+        }
+        if (mark_start < 0) selected_end=-1;
         if (editor_mode)
         {
             if (cursor_row < screen_start_line) screen_start_line=cursor_row;
@@ -397,14 +513,22 @@ int view_edit_file(char *filename, int editor_mode) {
             if (column+cursor_width > screen_start_col+max_x) screen_start_col=column+cursor_width-max_x;
         }
 
+        draw_buttons(max_y, max_x, editor_mode ? editor_buttons : viewer_buttons);
+        wnoutrefresh(stdscr);
         werase(content_win);
         file_lines *shown=lines;
-        for (int i=0; i < screen_start_line; i++) shown=shown->next;
+        off_t shown_position=0;
+        for (int i=0; i < screen_start_line; i++)
+        {
+            shown_position+=shown->line_length+1;
+            shown=shown->next;
+        }
         int shown_rows=0;
         for (; shown && shown_rows < max_y-2; shown_rows++, shown=shown->next)
         {
             wmove(content_win, shown_rows, 0);
-            display_line(content_win, shown, max_x, screen_start_col, editor_mode, syntax);
+            display_line(content_win, shown, max_x, screen_start_col, editor_mode, syntax, selected_start-shown_position, selected_end-shown_position);
+            shown_position+=shown->line_length+1;
         }
         werase(toprow_win);
         if (editor_mode)
@@ -418,8 +542,8 @@ int view_edit_file(char *filename, int editor_mode) {
                 snprintf(charcode, sizeof(charcode), "U+%04X", (unsigned int)chars[0]);
             }
             else snprintf(charcode, sizeof(charcode), "%s", current_line->next ? "#10" : "<EOF>");
-            mvwprintw(toprow_win, 0, 0, "%s   [-%s--] %3d L:[%3d+%3d %3d/%3lld] *(%4lld/%lldb)   %s",
-                filename, is_modified ? "M" : "-", column, screen_start_line+1, cursor_row-screen_start_line,
+            mvwprintw(toprow_win, 0, 0, "%s   [%c%s--] %3d L:[%3d+%3d %3d/%3lld] *(%4lld/%lldb)   %s",
+                filename, mark_start >= 0 ? 'B' : '-', is_modified ? "M" : "-", column, screen_start_line+1, cursor_row-screen_start_line,
                 cursor_row+1, (long long)num_lines, (long long)(seek+cursor_byte), (long long)num_bytes, charcode);
         }
         else
@@ -437,11 +561,64 @@ int view_edit_file(char *filename, int editor_mode) {
         char input_text[MB_LEN_MAX+1];
         int input=read_text_key(content_win, input_text);
         int target_column=-1;
+        off_t edit_start=position, edit_end=position;
+        size_t insert_length=0;
+        const char *insert=NULL;
+        char *block=NULL;
         switch (input)
         {
             case KEY_F(3):
-                if (editor_mode) break;
-                goto close_editor;
+                if (!editor_mode) goto close_editor;
+                if (mark_start >= 0 && mark_end < 0)
+                {
+                    mark_start=selected_start;
+                    mark_end=selected_end;
+                }
+                else { mark_start=position; mark_end=-1; }
+                break;
+            case KEY_F(5):
+            case KEY_F(6):
+            case KEY_F(8):
+            {
+                if (!editor_mode || selected_start < 0 || selected_start == selected_end) break;
+                if (input == KEY_F(8))
+                {
+                    edit_start=selected_start;
+                    edit_end=selected_end;
+                    break;
+                }
+                // Inserting inside the source would split the original selected block.
+                if (position > selected_start && position < selected_end) break;
+                if (input == KEY_F(6) && (position == selected_start || position == selected_end)) break;
+                insert_length=selected_end-selected_start;
+                if (input == KEY_F(6))
+                {
+                    edit_start=position < selected_start ? position : selected_start;
+                    edit_end=position > selected_end ? position : selected_end;
+                    insert_length=edit_end-edit_start;
+                }
+                block=malloc(insert_length);
+                if (!block)
+                {
+                    show_errormsg("Not enough memory to copy the block.");
+                    insert_length=0;
+                    edit_end=edit_start;
+                    break;
+                }
+                insert=block;
+                if (input == KEY_F(5)) copy_text_range(lines, selected_start, selected_end, block);
+                else if (position < selected_start)
+                {
+                    copy_text_range(lines, selected_start, selected_end, block);
+                    copy_text_range(lines, position, selected_start, block+selected_end-selected_start);
+                }
+                else
+                {
+                    copy_text_range(lines, selected_end, position, block);
+                    copy_text_range(lines, selected_start, selected_end, block+position-selected_end);
+                }
+                break;
+            }
             case KEY_F(10):
             case 27:
                 if (is_modified)
@@ -572,47 +749,15 @@ int view_edit_file(char *filename, int editor_mode) {
             case '\r':
                 if (editor_mode)
                 {
-                    file_lines *next=malloc(sizeof(*next));
-                    next->line_length=current_line->line_length-cursor_byte;
-                    next->line=malloc(next->line_length+1);
-                    memcpy(next->line, current_line->line+cursor_byte, next->line_length);
-                    next->next=current_line->next;
-                    current_line->next=next;
-                    current_line->line_length=cursor_byte;
-                    cursor_row++;
-                    cursor_byte=0;
-                    num_lines++;
-                    num_bytes++;
-                    is_modified=1;
+                    insert="\n";
+                    insert_length=1;
                 }
                 break;
             case KEY_BACKSPACE:
                 if (!editor_mode) break;
                 if (cursor_byte > 0)
-                {
-                    int previous=text_previous(current_line->line, cursor_byte);
-                    memmove(current_line->line+previous, current_line->line+cursor_byte, current_line->line_length-cursor_byte);
-                    current_line->line_length-=cursor_byte-previous;
-                    num_bytes-=cursor_byte-previous;
-                    cursor_byte=previous;
-                    is_modified=1;
-                }
-                else if (cursor_row > 0)
-                {
-                    file_lines *previous=lines;
-                    for (int i=0; i < cursor_row-1; i++) previous=previous->next;
-                    cursor_byte=previous->line_length;
-                    previous->line=realloc(previous->line, cursor_byte+current_line->line_length+1);
-                    memcpy(previous->line+cursor_byte, current_line->line, current_line->line_length);
-                    previous->line_length+=current_line->line_length;
-                    previous->next=current_line->next;
-                    free(current_line->line);
-                    free(current_line);
-                    cursor_row--;
-                    num_lines--;
-                    num_bytes--;
-                    is_modified=1;
-                }
+                    edit_start=seek+text_previous(current_line->line, cursor_byte);
+                else if (cursor_row > 0) edit_start--;
                 break;
             case KEY_DC:
                 if (!editor_mode) break;
@@ -620,24 +765,9 @@ int view_edit_file(char *filename, int editor_mode) {
                 {
                     wchar_t chars[CCHARW_MAX];
                     int width, bytes=text_cell(current_line->line+cursor_byte, current_line->line_length-cursor_byte, chars, &width);
-                    memmove(current_line->line+cursor_byte, current_line->line+cursor_byte+bytes, current_line->line_length-cursor_byte-bytes);
-                    current_line->line_length-=bytes;
-                    num_bytes-=bytes;
-                    is_modified=1;
+                    edit_end+=bytes;
                 }
-                else if (current_line->next)
-                {
-                    file_lines *next=current_line->next;
-                    current_line->line=realloc(current_line->line, current_line->line_length+next->line_length+1);
-                    memcpy(current_line->line+current_line->line_length, next->line, next->line_length);
-                    current_line->line_length+=next->line_length;
-                    current_line->next=next->next;
-                    free(next->line);
-                    free(next);
-                    num_lines--;
-                    num_bytes--;
-                    is_modified=1;
-                }
+                else if (current_line->next) edit_end++;
                 break;
             case KEY_MOUSE:
             {
@@ -653,17 +783,47 @@ int view_edit_file(char *filename, int editor_mode) {
                 if (input == '\t') strcpy(input_text, "\t");
                 if (editor_mode && input_text[0])
                 {
-                    int bytes=strlen(input_text);
-                    current_line->line=realloc(current_line->line, current_line->line_length+bytes+1);
-                    memmove(current_line->line+cursor_byte+bytes, current_line->line+cursor_byte, current_line->line_length-cursor_byte);
-                    memcpy(current_line->line+cursor_byte, input_text, bytes);
-                    current_line->line_length+=bytes;
-                    cursor_byte+=bytes;
-                    num_bytes+=bytes;
-                    is_modified=1;
+                    insert=input_text;
+                    insert_length=strlen(input_text);
                 }
                 break;
         }
+        if (edit_start != edit_end || insert_length)
+        {
+            if (replace_text_range(lines, edit_start, edit_end, insert, insert_length, &num_lines) != 0)
+                show_errormsg(SPRINTF("Cannot edit file:\n%s", strerror(errno)));
+            else
+            {
+                num_bytes+=insert_length-(edit_end-edit_start);
+                position=edit_start+insert_length;
+                if (input == KEY_F(5)) { mark_start=selected_start; mark_end=selected_end; }
+                mark_start=move_mark(mark_start, edit_start, edit_end, insert_length, 1);
+                mark_end=move_mark(mark_end, edit_start, edit_end, insert_length, 0);
+                if (input == KEY_F(6))
+                {
+                    off_t length=selected_end-selected_start;
+                    mark_start=edit_start;
+                    if (seek+cursor_byte > selected_end) mark_start=edit_end-length;
+                    mark_end=mark_start+length;
+                    position=mark_end;
+                }
+                if (input == KEY_F(8) || mark_start == mark_end) mark_start=mark_end=-1;
+                // An edit may join a base character to existing combining marks.
+                off_t *marks[]={&mark_start, &mark_end};
+                for (int i=0; i < 2; i++)
+                    if (*marks[i] >= 0)
+                    {
+                        off_t offset=*marks[i];
+                        file_lines *line=line_at_position(lines, &offset, NULL);
+                        int column=text_column(line->line, offset);
+                        *marks[i]+=text_offset(line->line, line->line_length, column)-offset;
+                    }
+                line_at_position(lines, &position, &cursor_row);
+                cursor_byte=position;
+                is_modified=1;
+            }
+        }
+        free(block);
         if (target_column >= 0)
         {
             current_line=lines;

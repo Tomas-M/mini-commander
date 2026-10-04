@@ -3,7 +3,7 @@
 
 void initialize_ncurses(void);
 void refresh_screen(int cursor_visibility);
-void draw_buttons(int maxY, int maxX);
+void draw_buttons(int maxY, int maxX, const char *const labels[9]);
 void draw_windows(int maxY, int maxX);
 int text_cell(const char *text, int length, wchar_t *chars, int *width);
 int text_previous(const char *text, int position);
@@ -30,7 +30,7 @@ void show_errormsg(char * msg);
 void cursor_to_cmd(void);
 void update_cmd(void);
 int execute_file(const char *filename);
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax);
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax, off_t mark_start, off_t mark_end);
 int view_file(char *filename);
 int edit_file(char *filename);
 int file_has_extension(const char *filename, const char *extensions[]);

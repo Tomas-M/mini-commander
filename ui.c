@@ -122,38 +122,24 @@ void refresh_screen(int cursor_visibility)
     curs_set(cursor_visibility);
 }
 
-void draw_buttons(int maxY, int maxX) {
+// Keep function keys in their usual slots and clip labels on narrow terminals.
+void draw_buttons(int maxY, int maxX, const char *const labels[9]) {
+    attrset(A_NORMAL);
     move(maxY - 1, 0);
     clrtoeol();
-
-    char *buttons[] = {"Sort", "View", "Edit", "Copy", "Move", "Mkdir", "Del", "Refresh", "Quit"};
-    int num_buttons = sizeof(buttons) / sizeof(char *);
-
-    int total_width = maxX - (num_buttons - 1);  // Subtract (num_buttons - 1) to account for spaces between buttons
-    int button_width = (total_width - 1) / num_buttons;  // -1 to account for the extra character in "F10"
-
-    int extra_space = total_width - (button_width * num_buttons) - 1;  // -1 to account for the extra character in "F10"
-
-    int x = 0;
-    for (int i = 0; i < num_buttons; ++i) {
-        int extra = 0;
-        if (extra_space > 0) {
-            extra = 1;
-            extra_space--;
-        }
-
+    for (int i=0; i < 9; i++) {
+        int x=i*maxX/9, width=(i+1)*maxX/9-x-1;
+        if (!labels[i] || width <= 0) continue;
+        char key[4];
+        int length=snprintf(key, sizeof(key), "F%d", i+2);
         attrset(A_NORMAL);
-        if (i == num_buttons - 1) {  // Last button (F10)
-            mvprintw(maxY - 1, x, "F%d ", i + 2);
-        } else {
-            mvprintw(maxY - 1, x, "F%d", i + 2);
-        }
-
-        attron(COLOR_PAIR(COLOR_BLACK_ON_CYAN));
-        mvprintw(maxY - 1, x + 2 + (i == num_buttons - 1), "%-*s", button_width - 2 + extra, buttons[i]);
-
-        x += button_width + extra + 1 + (i == num_buttons - 1);  // +1 spacer between buttons, +1 for the last button (F10)
+        mvaddnstr(maxY-1, x, key, width);
+        if (width <= length) continue;
+        attrset(COLOR_PAIR(COLOR_BLACK_ON_CYAN));
+        mvhline(maxY-1, x+length, ' ', width-length);
+        mvaddnstr(maxY-1, x+length, labels[i], width-length);
     }
+    attrset(A_NORMAL);
 }
 
 void draw_windows(int maxY, int maxX) {

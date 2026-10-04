@@ -394,7 +394,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
                 if (editor_mode) cell_attributes=COLOR_PAIR(COLOR_WHITE_ON_RED);
             }
             if (offset < mark_end && offset+bytes > mark_start)
-                cell_attributes=COLOR_PAIR(COLOR_BLACK_ON_CYAN)|(color_enabled ? 0 : A_REVERSE);
+                cell_attributes=COLOR_PAIR(COLOR_BLACK_ON_CYAN);
             cchar_t cell;
             setcchar(&cell, chars, cell_attributes & ~A_COLOR, PAIR_NUMBER(cell_attributes), NULL);
             mvwadd_wchnstr(win, row, column-current_col, &cell, 1);
@@ -405,7 +405,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
     // Make a selected newline visible, including on otherwise empty lines.
     if (line->next && mark_start <= line->line_length && mark_end > line->line_length)
         if (column >= current_col && column < current_col+max_x)
-            mvwaddch(win, row, column-current_col, ' '|COLOR_PAIR(COLOR_BLACK_ON_CYAN)|(color_enabled ? 0 : A_REVERSE));
+            mvwaddch(win, row, column-current_col, ' '|COLOR_PAIR(COLOR_BLACK_ON_CYAN));
     free(text);
 }
 
@@ -439,8 +439,8 @@ int view_edit_file(char *filename, int editor_mode) {
     int syntax=0;
     off_t mark_start=-1, mark_end=-1;
     char find_str[CMD_MAX] = {0};
-    const char *editor_buttons[]={"Save", "Mark", NULL, "Copy", "Move", "Search", "Delete", NULL, "Quit"};
-    const char *viewer_buttons[]={NULL, "Quit", NULL, NULL, NULL, "Search", NULL, NULL, "Quit"};
+    const char *editor_buttons[]={"Save", "Mark", "", "Copy", "Move", "Search", "Delete", "", "Quit"};
+    const char *viewer_buttons[]={"", "Quit", "", "", "", "Search", "", "", "Quit"};
 
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);

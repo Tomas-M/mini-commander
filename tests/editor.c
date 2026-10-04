@@ -1,4 +1,4 @@
-// Run with: gcc -Os -ffunction-sections -fdata-sections tests/editor.c ui.c dialog.c -Wl,--gc-sections -lncursesw -o /tmp/mc-editor-test && /tmp/mc-editor-test
+// Run with: gcc -Os -ffunction-sections -fdata-sections tests/editor.c ui.c dialog.c init.c -Wl,--gc-sections -lncursesw -o /tmp/mc-editor-test && /tmp/mc-editor-test
 #include "../includes.h"
 #include <assert.h>
 
@@ -14,6 +14,7 @@ static void *test_malloc(size_t size);
 #undef show_errormsg
 
 int color_enabled=1;
+extern SCREEN *screen;
 static int allocation_failure=-1, event_index, editing;
 static const char *test_name;
 typedef struct { int key; const char *text; } Event;
@@ -47,16 +48,22 @@ int test_dialog(char *title, char *buttons[], int selected, char *prompt, int da
 // Verify the actual staged footer before delivering each scripted key.
 int test_read_key(WINDOW *win, char *text)
 {
-    const char *labels[]={"Save", "Mark", NULL, "Copy", "Move", "Search", "Delete", NULL, "Quit"};
+    const char *labels[]={"Save", "Mark", "", "Copy", "Move", "Search", "Delete", "", "Quit"};
     int row=getmaxy(stdscr)-1, columns=getmaxx(stdscr);
     for (int i=0; i < 9; i++)
     {
         const char *label=labels[i];
-        if (!editing) label=i == 1 || i == 8 ? "Quit" : i == 5 ? "Search" : NULL;
+        if (!editing) label=i == 1 || i == 8 ? "Quit" : i == 5 ? "Search" : "";
         int x=i*columns/9;
-        if (!label) { assert((mvwinch(newscr, row, x) & A_CHARTEXT) == ' '); continue; }
+        assert((mvwinch(newscr, row, x) & A_CHARTEXT) == 'F');
         x+=i == 8 ? 3 : 2;
         for (int j=0; label[j]; j++) assert((mvwinch(newscr, row, x+j) & A_CHARTEXT) == (unsigned char)label[j]);
+        for (int column=x; column < (i+1)*columns/9-1; column++)
+        {
+            chtype cell=mvwinch(newscr, row, column);
+            assert(PAIR_NUMBER(cell) == COLOR_BLACK_ON_CYAN);
+            if (column-x >= strlen(label)) assert((cell & A_CHARTEXT) == ' ');
+        }
     }
     Event event=events[event_index++];
     assert(event.key != -1);
@@ -141,22 +148,36 @@ static void check_rendering(void)
     for (int monochrome=0; monochrome < 2; monochrome++)
     {
         color_enabled=!monochrome;
+        init_screen();
         werase(win);
         display_line(win, &line, 20, 0, 1, SYNTAX_C, 1, line.line_length+1);
         for (int column=1; column <= 8; column++)
         {
-            chtype cell=mvwinch(win, 0, column);
-            if (PAIR_NUMBER(cell) != COLOR_BLACK_ON_CYAN)
-                fprintf(stderr, "selection column=%d mono=%d pair=%d char=%lu\n", column, monochrome, PAIR_NUMBER(cell), (unsigned long)(cell & A_CHARTEXT));
-            assert(PAIR_NUMBER(cell) == COLOR_BLACK_ON_CYAN);
-            assert(!!(cell & A_REVERSE) == monochrome);
+            cchar_t cell;
+            wchar_t chars[CCHARW_MAX];
+            attr_t attributes;
+            short pair;
+            mvwin_wch(win, 0, column, &cell);
+            getcchar(&cell, chars, &attributes, &pair, NULL);
+            assert(pair == COLOR_BLACK_ON_CYAN);
+            assert(!(attributes & (A_REVERSE|A_BOLD)));
+            short foreground, background;
+            pair_content(pair, &foreground, &background);
+            assert(foreground == COLOR_BLACK && background == (monochrome ? COLOR_WHITE : COLOR_CYAN));
         }
         assert(PAIR_NUMBER(mvwinch(win, 0, 0)) != COLOR_BLACK_ON_CYAN);
         werase(win);
         display_line(win, &line, 3, 5, 1, SYNTAX_C, 5, line.line_length);
-        assert(PAIR_NUMBER(mvwinch(win, 0, 0)) == COLOR_BLACK_ON_CYAN);
+        cchar_t cell;
+        wchar_t chars[CCHARW_MAX];
+        attr_t attributes;
+        short pair;
+        mvwin_wch(win, 0, 0, &cell);
+        getcchar(&cell, chars, &attributes, &pair, NULL);
+        assert(pair == COLOR_BLACK_ON_CYAN);
     }
     color_enabled=1;
+    init_screen();
     delwin(win);
 }
 
@@ -166,10 +187,8 @@ int main(void)
     setlocale(LC_CTYPE, "C.UTF-8");
     check_ranges();
     FILE *output=tmpfile(), *input=tmpfile();
-    SCREEN *screen=newterm("xterm", output, input);
+    screen=newterm("xterm", output, input);
     assert(screen);
-    start_color();
-    for (int pair=1; pair <= COLOR_RED_ON_BLUE; pair++) init_pair(pair, COLOR_WHITE, COLOR_BLUE);
     check_rendering();
     editing=1;
     check_editor("copy retains source", "abcDEFghi", "abcghiDEF", (Event[]){K(KEY_RIGHT), K(KEY_RIGHT), K(KEY_RIGHT), K(KEY_F(3)), K(KEY_RIGHT), K(KEY_RIGHT), K(KEY_RIGHT), K(KEY_F(3)), K(KEY_END), K(KEY_F(5)), K(KEY_F(8)), SAVE_QUIT});

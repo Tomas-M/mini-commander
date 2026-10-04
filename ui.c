@@ -129,7 +129,7 @@ void draw_buttons(int maxY, int maxX, const char *const labels[9]) {
     clrtoeol();
     for (int i=0; i < 9; i++) {
         int x=i*maxX/9, width=(i+1)*maxX/9-x-1;
-        if (!labels[i] || width <= 0) continue;
+        if (width <= 0) continue;
         char key[4];
         int length=snprintf(key, sizeof(key), "F%d", i+2);
         attrset(A_NORMAL);

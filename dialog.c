@@ -252,8 +252,8 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 
     while (1) {
         if (editing_prompt) {
-            int column=text_column(prompt, cursor_position);
-            cursor_position=text_offset(prompt, strlen(prompt), column);
+            int column=text_column(prompt, cursor_position, 1);
+            cursor_position=text_offset(prompt, strlen(prompt), column, 1);
             if (column-prompt_offset >= max_prompt_display) prompt_offset=column-max_prompt_display+1;
             if (column < prompt_offset) prompt_offset=column;
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_PMPT));

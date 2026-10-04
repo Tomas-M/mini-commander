@@ -31,7 +31,7 @@ int execute_file(const char *filename)
 // Convert the command's byte position to the visible terminal column.
 void cursor_to_cmd()
 {
-    move(LINES-2, prompt_length+text_column(cmd, cursor_pos)-cmd_offset);
+    move(LINES-2, prompt_length+text_column(cmd, cursor_pos, 1)-cmd_offset);
 }
 
 // Keep the prompt and command on one row, scrolling in terminal columns.
@@ -45,8 +45,8 @@ void update_cmd()
     addstr(SHORTEN(prompt, COLS-4));
     prompt_length=getcurx(stdscr);
 
-    int width=COLS-prompt_length, column=text_column(cmd, cursor_pos);
-    cursor_pos=text_offset(cmd, cmd_len, column);
+    int width=COLS-prompt_length, column=text_column(cmd, cursor_pos, 1);
+    cursor_pos=text_offset(cmd, cmd_len, column, 1);
     if (column-cmd_offset >= width) cmd_offset=column-width+1;
     if (column < cmd_offset) cmd_offset=column;
     draw_text(stdscr, LINES-2, prompt_length, cmd, cmd_offset, width);

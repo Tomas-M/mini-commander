@@ -26,6 +26,9 @@ slax.org
   selected; `F6` moves it and selects the moved block. `F8` deletes the selection.
   Blocks can span multiple lines; another `F3` starts a new selection. Copying
   or moving inside the selected block leaves the text unchanged.
+  Drag with the left mouse button to select a block without scrolling the view;
+  the cursor follows the drag, and releasing the button fixes the selection.
+  A plain click moves the cursor and clears the existing selection.
 - **Contextual function keys:** the bottom bar follows the active panel, viewer,
   or editor. `F7` searches in the viewer and editor; `Shift+F7` finds the next match.
 - **UTF-8 support:** view and edit multilingual text, including wide characters
@@ -35,7 +38,8 @@ slax.org
 - **Syntax highlighting:** basic highlighting for C source and headers (`.c`,
   `.h`) and shell scripts (`.sh`). Files starting with `#!/` also receive shell
   highlighting, even without an extension.
-- **See invisible characters:** tabs have visible markers, and the editor marks
+- **See invisible characters:** tabs appear as `<--->` in the editor and five
+  spaces in the viewer, while remaining single characters for editing. The editor marks
   control characters. Its status line shows the line, column, byte position,
   file size, and Unicode code point under the cursor.
 - **Editor save protection:** prompts before closing unsaved changes, preserves

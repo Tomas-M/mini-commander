@@ -22,7 +22,8 @@ int text_cell(const char *text, int length, wchar_t *chars, int *width)
         chars[0]=L'\x25cc';
         count=2;
     }
-    while (bytes < (size_t)length)
+    // Combining marks do not attach to a tab.
+    while (chars[0] != L'\t' && bytes < (size_t)length)
     {
         wchar_t next;
         state=(mbstate_t){0};
@@ -49,23 +50,27 @@ int text_previous(const char *text, int position)
 }
 
 // Convert a byte length to terminal columns, including double-width characters.
-int text_column(const char *text, int length)
+int text_column(const char *text, int length, int tab_width)
 {
     int column=0, width;
     wchar_t chars[CCHARW_MAX];
     for (int offset=0; offset < length; column+=width)
+    {
         offset+=text_cell(text+offset, length-offset, chars, &width);
+        if (chars[0] == L'\t') width=tab_width;
+    }
     return column;
 }
 
 // Snap a screen column to the beginning of a complete display character.
-int text_offset(const char *text, int length, int column)
+int text_offset(const char *text, int length, int column, int tab_width)
 {
     int offset=0, current=0, width;
     wchar_t chars[CCHARW_MAX];
     while (offset < length)
     {
         int bytes=text_cell(text+offset, length-offset, chars, &width);
+        if (chars[0] == L'\t') width=tab_width;
         if (current+width > column) break;
         offset+=bytes;
         current+=width;

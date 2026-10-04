@@ -2,6 +2,7 @@
 #include "types.h"
 #include "globals.h"
 
+static const char tab_marker[]="<--->";
 
 char *find_newline(char *buffer, size_t length) {
     char *pos_r = memchr(buffer, '\r', length);
@@ -371,6 +372,7 @@ static int highlight_token(const char *text, int syntax, int *attributes)
 void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax, off_t mark_start, off_t mark_end)
 {
     int row=getcury(win), column=0, match_end=0, attributes=COLOR_PAIR(COLOR_WHITE_ON_BLUE);
+    int tab_width=sizeof(tab_marker)-1;
     char *text=malloc(line->line_length+1);
     memcpy(text, line->line, line->line_length);
     text[line->line_length]='\0';
@@ -378,26 +380,28 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
     {
         wchar_t chars[CCHARW_MAX];
         int width, bytes=text_cell(text+offset, line->line_length-offset, chars, &width);
+        int is_tab=chars[0] == L'\t';
+        if (is_tab) width=tab_width;
         if (offset >= match_end)
             match_end=offset+highlight_token(text+offset, syntax, &attributes);
-        if (column >= current_col && column+width <= current_col+max_x)
+        int cell_attributes=attributes;
+        if (is_tab) cell_attributes=COLOR_PAIR(COLOR_CYAN_ON_BLUE);
+        else if (!iswprint(chars[0]))
         {
-            int cell_attributes=attributes;
-            if (chars[0] == L'\t')
-            {
-                chars[0]=L'>';
-                cell_attributes=COLOR_PAIR(COLOR_CYAN_ON_BLUE);
-            }
-            else if (!iswprint(chars[0]))
-            {
-                chars[0]=editor_mode && chars[0] < 32 ? L'@'+chars[0] : L'.';
-                if (editor_mode) cell_attributes=COLOR_PAIR(COLOR_WHITE_ON_RED);
-            }
-            if (offset < mark_end && offset+bytes > mark_start)
-                cell_attributes=COLOR_PAIR(COLOR_BLACK_ON_CYAN);
+            chars[0]=editor_mode && chars[0] < 32 ? L'@'+chars[0] : L'.';
+            if (editor_mode) cell_attributes=COLOR_PAIR(COLOR_WHITE_ON_RED);
+        }
+        if (offset < mark_end && offset+bytes > mark_start)
+            cell_attributes=COLOR_PAIR(COLOR_BLACK_ON_CYAN);
+        // Clip each marker column while keeping the tab a single editable byte.
+        for (int part=0; part < (is_tab ? tab_width : 1); part++)
+        {
+            int x=column+part-current_col, cell_width=is_tab ? 1 : width;
+            if (x < 0 || x+cell_width > max_x) continue;
+            if (is_tab) chars[0]=editor_mode ? tab_marker[part] : L' ';
             cchar_t cell;
             setcchar(&cell, chars, cell_attributes & ~A_COLOR, PAIR_NUMBER(cell_attributes), NULL);
-            mvwadd_wchnstr(win, row, column-current_col, &cell, 1);
+            mvwadd_wchnstr(win, row, x, &cell, 1);
         }
         column+=width;
         offset+=bytes;
@@ -433,7 +437,11 @@ int view_edit_file(char *filename, int editor_mode) {
     int cursor_row = 0;
     int is_modified = 0;
     int syntax=0;
+    int tab_width=sizeof(tab_marker)-1;
     off_t mark_start=-1, mark_end=-1;
+    off_t drag_start=-1;
+    mmask_t saved_mousemask=0;
+    int saved_mouseinterval=0;
     char find_str[CMD_MAX] = {0};
     const char *editor_buttons[]={"Save", "Mark", "", "Copy", "Move", "Search", "Delete", "", "Quit"};
     const char *viewer_buttons[]={"", "Quit", "", "", "", "Search", "", "", "Quit"};
@@ -472,10 +480,13 @@ int view_edit_file(char *filename, int editor_mode) {
     {
         if (file_type && (!strcmp(file_type, ".c") || !strcmp(file_type, ".h"))) syntax|=SYNTAX_C;
         if ((file_type && !strcmp(file_type, ".sh")) || (lines->line_length > 3 && !strncmp(lines->line, "#!/", 3))) syntax|=SYNTAX_SHELL;
+        // Receive press, drag and release separately; restore panel mouse behavior on exit.
+        mousemask(BUTTON1_PRESSED|BUTTON1_RELEASED|BUTTON1_CLICKED|REPORT_MOUSE_POSITION, &saved_mousemask);
+        saved_mouseinterval=mouseinterval(0);
     }
 
     // Byte positions identify edits; terminal columns are derived only for display/navigation.
-    int cursor_byte=0;
+    int cursor_byte=0, input=ERR;
     while (1)
     {
         file_lines *current_line=lines;
@@ -485,9 +496,9 @@ int view_edit_file(char *filename, int editor_mode) {
             seek+=current_line->line_length+1;
             current_line=current_line->next;
         }
-        int column=text_column(current_line->line, cursor_byte);
+        int column=text_column(current_line->line, cursor_byte, tab_width);
         // Insertions and line joins can attach existing combining marks to the preceding character.
-        cursor_byte=text_offset(current_line->line, current_line->line_length, column);
+        cursor_byte=text_offset(current_line->line, current_line->line_length, column, tab_width);
         off_t position=seek+cursor_byte, selected_start=mark_start;
         off_t selected_end=mark_end >= 0 ? mark_end : position;
         if (selected_start >= 0 && selected_start > selected_end)
@@ -497,7 +508,7 @@ int view_edit_file(char *filename, int editor_mode) {
             selected_end=swap;
         }
         if (mark_start < 0) selected_end=-1;
-        if (editor_mode)
+        if (editor_mode && input != KEY_MOUSE)
         {
             if (cursor_row < screen_start_line) screen_start_line=cursor_row;
             if (cursor_row >= screen_start_line+max_y-2) screen_start_line=cursor_row-max_y+3;
@@ -505,7 +516,11 @@ int view_edit_file(char *filename, int editor_mode) {
             wchar_t chars[CCHARW_MAX];
             int cursor_width=1;
             if (cursor_byte < current_line->line_length)
+            {
                 text_cell(current_line->line+cursor_byte, current_line->line_length-cursor_byte, chars, &cursor_width);
+                if (chars[0] == L'\t') cursor_width=tab_width;
+                if (cursor_width > max_x) cursor_width=max_x;
+            }
             if (column+cursor_width > screen_start_col+max_x) screen_start_col=column+cursor_width-max_x;
         }
 
@@ -550,12 +565,20 @@ int view_edit_file(char *filename, int editor_mode) {
             mvwprintw(toprow_win, 0, max_x-width, "        %d/%lld   %lld%%", last, (long long)num_lines, (long long)(100*last/num_lines));
         }
         wnoutrefresh(toprow_win);
-        if (editor_mode) wmove(content_win, cursor_row-screen_start_line, column-screen_start_col);
+        if (editor_mode)
+        {
+            // A click can snap to the start of a character clipped by the viewport.
+            int x=column-screen_start_col;
+            if (x < 0) x=0;
+            if (x >= max_x) x=max_x-1;
+            wmove(content_win, cursor_row-screen_start_line, x);
+        }
         wnoutrefresh(content_win);
         refresh_screen(editor_mode);
 
         char input_text[MB_LEN_MAX+1];
-        int input=read_text_key(content_win, input_text);
+        input=read_text_key(content_win, input_text);
+        if (input != KEY_MOUSE) drag_start=-1;
         int target_column=-1;
         off_t edit_start=position, edit_end=position;
         size_t insert_length=0;
@@ -668,7 +691,7 @@ int view_edit_file(char *filename, int editor_mode) {
                     cursor_row=found_row;
                     cursor_byte=found;
                     screen_start_line=found_row;
-                    screen_start_col=text_column(search_line->line, found);
+                    screen_start_col=text_column(search_line->line, found, tab_width);
                 }
                 break;
             }
@@ -770,10 +793,38 @@ int view_edit_file(char *filename, int editor_mode) {
             {
                 MEVENT event;
                 if (!editor_mode || getmouse(&event) != OK) break;
-                if (event.y < 1 || event.y >= max_y-1 || event.x < 0 || event.x >= max_x) break;
+                int pressed=event.bstate & BUTTON1_PRESSED;
+                int released=event.bstate & (BUTTON1_RELEASED|BUTTON1_CLICKED);
+                int clicked=event.bstate & BUTTON1_CLICKED;
+                if (!(event.bstate & (BUTTON1_PRESSED|BUTTON1_RELEASED|BUTTON1_CLICKED|REPORT_MOUSE_POSITION))) break;
+                if (drag_start < 0 && !pressed && !clicked) break;
+                int outside=!wenclose(content_win, event.y, event.x);
+                if (outside && drag_start < 0) break;
+                if (event.y < 1) event.y=1;
+                if (event.y >= max_y-1) event.y=max_y-2;
+                if (event.x < 0) event.x=0;
+                if (event.x >= max_x) event.x=max_x-1;
                 cursor_row=screen_start_line+event.y-1;
                 if (cursor_row >= num_lines) cursor_row=num_lines-1;
-                target_column=screen_start_col+event.x;
+                file_lines *line=lines;
+                off_t mouse_position=0;
+                for (int row=0; row < cursor_row; row++, line=line->next)
+                    mouse_position+=line->line_length+1;
+                cursor_byte=text_offset(line->line, line->line_length, screen_start_col+event.x, tab_width);
+                mouse_position+=cursor_byte;
+                // A press clears the old block; subsequent motion selects from this anchor.
+                if (drag_start >= 0)
+                {
+                    mark_start=mouse_position < drag_start ? mouse_position : drag_start;
+                    mark_end=mouse_position > drag_start ? mouse_position : drag_start;
+                    if (mark_start == mark_end) mark_start=mark_end=-1;
+                }
+                else
+                {
+                    mark_start=mark_end=-1;
+                    if (pressed) drag_start=mouse_position;
+                }
+                if (released) drag_start=-1;
                 break;
             }
             default:
@@ -817,8 +868,8 @@ int view_edit_file(char *filename, int editor_mode) {
                     {
                         off_t offset=*marks[i];
                         file_lines *line=line_at_position(lines, &offset, NULL);
-                        int column=text_column(line->line, offset);
-                        *marks[i]+=text_offset(line->line, line->line_length, column)-offset;
+                        int column=text_column(line->line, offset, tab_width);
+                        *marks[i]+=text_offset(line->line, line->line_length, column, tab_width)-offset;
                     }
                 if (mark_start == mark_end) mark_start=mark_end=-1;
                 line_at_position(lines, &position, &cursor_row);
@@ -831,11 +882,16 @@ int view_edit_file(char *filename, int editor_mode) {
         {
             current_line=lines;
             for (int i=0; i < cursor_row; i++) current_line=current_line->next;
-            cursor_byte=text_offset(current_line->line, current_line->line_length, target_column);
+            cursor_byte=text_offset(current_line->line, current_line->line_length, target_column, tab_width);
         }
     }
 
 close_editor:
+    if (editor_mode)
+    {
+        mousemask(saved_mousemask, NULL);
+        mouseinterval(saved_mouseinterval);
+    }
     delwin(toprow_win);
     delwin(content_win);
     free_file_lines(lines);

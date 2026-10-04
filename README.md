@@ -21,6 +21,13 @@ slax.org
 
 - **Built-in viewer and editor:** open files with `F3` or edit them with `F4`,
   without launching an external program. Save in the editor with `F2`.
+- **Editor blocks:** press `F3`, move to the other end, then press `F3` again
+  to finish marking. `F5` copies the block to the cursor and keeps the original
+  selected; `F6` moves it and selects the moved block. `F8` deletes the selection.
+  Blocks can span multiple lines; another `F3` starts a new selection. Copying
+  or moving inside the selected block leaves the text unchanged.
+- **Contextual function keys:** the bottom bar follows the active panel, viewer,
+  or editor. `F7` searches in the viewer and editor; `Shift+F7` finds the next match.
 - **UTF-8 support:** view and edit multilingual text, including wide characters
   and combining accents, with correct cursor movement and deletion. Dialog text
   fields and the command line accept UTF-8, and panel prefix search supports

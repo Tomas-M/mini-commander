@@ -573,6 +573,7 @@ int view_edit_file(char *filename, int editor_mode) {
                 {
                     mark_start=selected_start;
                     mark_end=selected_end;
+                    if (mark_start == mark_end) mark_start=mark_end=-1;
                 }
                 else { mark_start=position; mark_end=-1; }
                 break;
@@ -807,7 +808,7 @@ int view_edit_file(char *filename, int editor_mode) {
                     mark_end=mark_start+length;
                     position=mark_end;
                 }
-                if (input == KEY_F(8) || mark_start == mark_end) mark_start=mark_end=-1;
+                if (input == KEY_F(8)) mark_start=mark_end=-1;
                 // An edit may join a base character to existing combining marks.
                 off_t *marks[]={&mark_start, &mark_end};
                 for (int i=0; i < 2; i++)
@@ -818,6 +819,7 @@ int view_edit_file(char *filename, int editor_mode) {
                         int column=text_column(line->line, offset);
                         *marks[i]+=text_offset(line->line, line->line_length, column)-offset;
                     }
+                if (mark_start == mark_end) mark_start=mark_end=-1;
                 line_at_position(lines, &position, &cursor_row);
                 cursor_byte=position;
                 is_modified=1;

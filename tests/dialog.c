@@ -16,7 +16,7 @@ static int event_index;
 #define END K(-1)
 
 // Locate the rendered brackets independently of the layout helper, then inject a click.
-int test_read_key(WINDOW *win, char *text)
+int test_read_key(WINDOW *win, char *text, MEVENT *mouse)
 {
     Event event=events[event_index++];
     assert(event.key != -1);
@@ -36,9 +36,7 @@ int test_read_key(WINDOW *win, char *text)
     }
     if (event.button == -2) { x=3; y=3; }
     wmove(win, cursor_y, cursor_x);
-    MEVENT mouse={0, getbegx(win)+x+event.x, getbegy(win)+y+event.y, 0, event.mouse};
-    assert(ungetmouse(&mouse) == OK);
-    assert(wgetch(win) == KEY_MOUSE);
+    *mouse=(MEVENT){0, getbegx(win)+x+event.x, getbegy(win)+y+event.y, 0, event.mouse};
     return KEY_MOUSE;
 }
 

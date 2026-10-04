@@ -580,10 +580,9 @@ int view_edit_file(char *filename, int editor_mode) {
 
         char input_text[MB_LEN_MAX+1];
         MEVENT event;
-        input=read_text_key(content_win, input_text);
+        input=read_text_key(content_win, input_text, &event);
         if (input == KEY_MOUSE)
         {
-            if (getmouse(&event) != OK) continue;
             int key=button_key(&event, buttons, &pressed_button);
             if (drag_start < 0) input=key;
         }

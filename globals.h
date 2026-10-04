@@ -15,7 +15,7 @@ int text_previous(const char *text, int position);
 int text_column(const char *text, int length, int tab_width);
 int text_offset(const char *text, int length, int column, int tab_width);
 void draw_text(WINDOW *win, int row, int x, const char *text, int start, int width);
-int read_text_key(WINDOW *win, char *text);
+int read_text_key(WINDOW *win, char *text, MEVENT *mouse);
 void shorten(char *name, int width, char *result);
 void update_panel(WINDOW *win, PanelProp *panel);
 void update_panel_cursor(void);

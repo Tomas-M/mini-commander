@@ -11,6 +11,9 @@ extern SCREEN *screen;
 static FileNode files[8], other_files[8];
 static PanelMouse mouse;
 
+// These input tests use standard key codes only.
+int noesc(int key) { return key; }
+
 // Deliver panel events and independently check the cached selection totals.
 static int send_mouse(mmask_t state, int x, int y)
 {
@@ -123,9 +126,32 @@ int main(void)
     left_panel.scroll_index=3;
     send_mouse(BUTTON1_CLICKED, 3, 2);
     assert(left_panel.selected_index == 3);
+    // Feed a press and immediate motion together, with no intermediate key or click.
+    for (int interval=0; interval <= 50; interval+=50)
+    {
+        mouseinterval(interval);
+        rewind(input);
+        fputs("\033[<0;4;4M\033[<32;4;7M\033[<0;4;7mQ", input);
+        rewind(input);
+        mmask_t expected[]={BUTTON1_PRESSED, REPORT_MOUSE_POSITION, BUTTON1_RELEASED};
+        int received=0;
+        for (;;)
+        {
+            char text[MB_LEN_MAX+1];
+            MEVENT event;
+            int key=read_text_key(stdscr, text, &event);
+            if (key == KEY_RESIZE) continue;
+            if (key == 0 && !strcmp(text, "Q")) break;
+            assert(key == KEY_MOUSE && received < 3);
+            assert(event.bstate & expected[received]);
+            assert(event.x == 3 && event.y == (received ? 6 : 3));
+            received++;
+        }
+        assert(received == 3);
+    }
     delwin(win1); delwin(win2);
     endwin(); delscreen(screen);
     fclose(input); fclose(output);
-    puts("Mouse: footer bounds, resize, drag confinement, fixed marking, totals and double clicks passed.");
+    puts("Mouse: footer, drag confinement, fixed marking, totals, double clicks and queued press/motion/release passed.");
     return 0;
 }

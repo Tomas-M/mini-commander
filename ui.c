@@ -102,12 +102,15 @@ void draw_text(WINDOW *win, int row, int x, const char *text, int start, int wid
 }
 
 // Keep Unicode input separate from ncurses key codes, which overlap numerically.
-int read_text_key(WINDOW *win, char *text)
+int read_text_key(WINDOW *win, char *text, MEVENT *mouse)
 {
     wint_t input;
     text[0]='\0';
+    // One KEY_MOUSE can announce several queued events; drain them before waiting.
+    if (getmouse(mouse) == OK) return KEY_MOUSE;
     int result=wget_wch(win, &input);
     if (result == ERR) return ERR;
+    if (result == KEY_CODE_YES && input == KEY_MOUSE) return getmouse(mouse) == OK ? KEY_MOUSE : ERR;
     if (result == KEY_CODE_YES) return noesc(input);
     if (input == 127 || input == 8) return KEY_BACKSPACE;
     if (input < 32) return input;

@@ -95,10 +95,9 @@ int main(int argc, char *argv[]) {
         int visible_items = getmaxy(win1) - 5;
 
         char input_text[MB_LEN_MAX+1];
-        int ch=read_text_key(stdscr, input_text);
+        int ch=read_text_key(stdscr, input_text, &event);
         if (ch == KEY_MOUSE)
         {
-            if (getmouse(&event) != OK) continue;
             ch=button_key(&event, panel_buttons, &pressed_button);
             if (mouse.button || ch == KEY_MOUSE) ch=panel_mouse(&event, &mouse);
         }

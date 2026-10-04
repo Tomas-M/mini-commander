@@ -279,7 +279,8 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
         wrefresh(win);
 
         char input_text[MB_LEN_MAX+1];
-        ch=read_text_key(win, input_text);
+        MEVENT event;
+        ch=read_text_key(win, input_text, &event);
         if (ch != KEY_MOUSE) pressed_button=-1;
         switch (ch) {
             case KEY_LEFT:
@@ -381,8 +382,6 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
                 break;
             case KEY_MOUSE:
             {
-                MEVENT event;
-                if (getmouse(&event) != OK) break;
                 int clicked=event.bstate & (BUTTON1_CLICKED|BUTTON1_DOUBLE_CLICKED|BUTTON1_TRIPLE_CLICKED);
                 if (!clicked && !(event.bstate & (BUTTON1_PRESSED|BUTTON1_RELEASED))) break;
                 int hit=-1, x=event.x-getbegx(win), y=event.y-getbegy(win);

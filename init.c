@@ -45,6 +45,8 @@ void init_screen() {
     define_key("\033[12~", KEY_F(2));
     define_key("\033[13~", KEY_F(3));
     define_key("\033[14~", KEY_F(4));
+    define_key("\033[28~", KEY_SHIFT_F5);
+    define_key("\033[29~", KEY_SHIFT_F6);
     define_key("\033[31~", KEY_SHIFT_F5);
     define_key("\033[32~", KEY_SHIFT_F6);
     define_key("\033[33~", KEY_SHIFT_F7);

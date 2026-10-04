@@ -49,7 +49,7 @@ int test_dialog(char *title, char *buttons[], int selected, char *prompt, int da
 }
 
 // Verify the actual staged footer before delivering each scripted key.
-int test_read_key(WINDOW *win, char *text)
+int test_read_key(WINDOW *win, char *text, MEVENT *mouse)
 {
     const char *labels[]={"Save", "Mark", "", "Copy", "Move", "Search", "Delete", "", "Quit"};
     int row=getmaxy(stdscr)-1, columns=getmaxx(stdscr);
@@ -92,10 +92,7 @@ int test_read_key(WINDOW *win, char *text)
     if (event.key == KEY_RESIZE) resizeterm(20, 100);
     if (event.key == KEY_MOUSE)
     {
-        MEVENT mouse={0, event.x, event.y, 0, event.mouse};
-        assert(ungetmouse(&mouse) == OK);
-        // The scripted reader bypasses wget_wch, so consume ungetmouse's queued key.
-        assert(wgetch(win) == KEY_MOUSE);
+        *mouse=(MEVENT){0, event.x, event.y, 0, event.mouse};
     }
     return event.key;
 }

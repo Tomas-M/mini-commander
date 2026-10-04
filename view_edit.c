@@ -4,24 +4,6 @@
 
 static const char tab_marker[]="<--->";
 
-char *find_newline(char *buffer, size_t length) {
-    char *pos_r = memchr(buffer, '\r', length);
-    char *pos_n = memchr(buffer, '\n', length);
-
-    if (pos_r && pos_n) {
-        if (pos_r + 1 == pos_n) {
-            return pos_n; // if \r\n is encountered, break on the later
-        }
-        return pos_r < pos_n ? pos_r : pos_n;
-    } else if (pos_r) {
-        return pos_r;
-    } else {
-        return pos_n;
-    }
-}
-
-
-
 // Complete partial writes and retry interrupted writes before reporting a failure.
 static int write_all(int fd, const char *data, size_t length)
 {
@@ -90,95 +72,72 @@ int write_file_lines(const char *filename, file_lines *lines)
 
 
 
-file_lines* read_file_lines(const char *filename, off_t *num_lines, off_t *num_bytes) {
-    // Initialize linked list and counters
-    file_lines *head = NULL, *tail = NULL;
-    *num_lines = 0;
-
-    // Open the file
-    int fd = open(filename, O_RDONLY);
-    if (fd == -1) {
-        return NULL;
+// Release a complete list or a partially constructed edit.
+void free_file_lines(file_lines *head) {
+    while (head) {
+        file_lines *next=head->next;
+        free(head->line);
+        free(head);
+        head=next;
     }
+}
 
-    // Get the file size
-    struct stat sb;
-    if (fstat(fd, &sb) == -1) {
-        close(fd);
-        return NULL;
-    }
-
-    *num_bytes = sb.st_size;
-
-    // Handle empty file scenario separately
-    if (sb.st_size == 0) {
-        head = malloc(sizeof(file_lines));
-        head->line = malloc(1);
-        close(fd);
-        head->line_length = 0;
-        head->next = NULL;
-        *num_lines = 1;
-        return head;
-    }
-
-
-    // Memory map the file
-    char *file_in_memory = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (file_in_memory == MAP_FAILED)
+// Split exact bytes into terminated lines, preserving empty lines and embedded NULs.
+static file_lines *split_file_lines(const char *data, size_t length, off_t *count, file_lines **tail)
+{
+    file_lines *head=NULL;
+    *tail=NULL;
+    *count=0;
+    for (size_t offset=0;;)
     {
-        close(fd);
-        return NULL;
+        const char *newline=memchr(data+offset, '\n', length-offset);
+        size_t bytes=newline ? (size_t)(newline-data)-offset : length-offset;
+        if (bytes > INT_MAX) { errno=EFBIG; break; }
+        file_lines *next=malloc(sizeof(*next));
+        if (!next) break;
+        next->line=malloc(bytes+1);
+        if (!next->line) { free(next); break; }
+        memcpy(next->line, data+offset, bytes);
+        next->line[bytes]='\0';
+        next->line_length=bytes;
+        next->next=NULL;
+        if (*tail) (*tail)->next=next;
+        else head=next;
+        *tail=next;
+        (*count)++;
+        if (!newline) return head;
+        offset+=bytes+1;
     }
+    free_file_lines(head);
+    return NULL;
+}
 
-    char *line_start = file_in_memory;
-
-    // Iterate through mapped memory
-
-    // Iterate through mapped memory
-    for (char *current = file_in_memory; current <= file_in_memory + sb.st_size; ++current) {
-        // Check for end of file or newline character
-        if (current == file_in_memory + sb.st_size || *current == '\n') {
-            file_lines *new_node = malloc(sizeof(file_lines));
-
-            // Allocate memory for the line data and copy it from the mapped memory
-            int line_length = current - line_start;
-            char *line_copy = malloc(line_length+1);
-            memcpy(line_copy, line_start, line_length);
-
-            // Fill in the new node
-            new_node->line = line_copy;
-            new_node->line_length = line_length;
-            new_node->next = NULL;
-
-            // Append to the linked list
-            if (!head) {
-                head = new_node;
-            } else {
-                tail->next = new_node;
-            }
-            tail = new_node;
-
-            // Prepare for next block
-            line_start = current + 1;
-            (*num_lines)++;
-        }
-    }
-
-    // Clean up
-    munmap(file_in_memory, sb.st_size);
+// Use the same line construction for initial loading and later range replacements.
+file_lines *read_file_lines(const char *filename, off_t *num_lines, off_t *num_bytes)
+{
+    *num_lines=0;
+    int fd=open(filename, O_RDONLY);
+    if (fd < 0) return NULL;
+    struct stat statbuf;
+    if (fstat(fd, &statbuf) != 0) { close(fd); return NULL; }
+    *num_bytes=statbuf.st_size;
+    char *data=statbuf.st_size ? mmap(NULL, statbuf.st_size, PROT_READ, MAP_PRIVATE, fd, 0) : "";
+    if (data == MAP_FAILED) { close(fd); return NULL; }
+    file_lines *tail, *head=split_file_lines(data, statbuf.st_size, num_lines, &tail);
+    int error=errno;
+    if (statbuf.st_size) munmap(data, statbuf.st_size);
     close(fd);
-
+    errno=error;
     return head;
 }
 
-
-void free_file_lines(file_lines *head) {
-    while (head != NULL) {
-        file_lines *temp = head;
-        head = head->next;
-        free(temp->line);
-        free(temp);
-    }
+// Resolve a row and, when requested, its absolute byte offset.
+static file_lines *line_at_row(file_lines *line, int row, off_t *position)
+{
+    if (position) *position=0;
+    for (int i=0; i < row; i++, line=line->next)
+        if (position) *position+=line->line_length+1;
+    return line;
 }
 
 // Resolve a file byte position, treating each line separator as one byte.
@@ -226,27 +185,10 @@ static int replace_text_range(file_lines *lines, off_t start, off_t end, const c
     if (length) memcpy(data+start, text, length);
     memcpy(data+start+length, last->line+end, last->line_length-end);
 
-    file_lines *head=NULL, *tail=NULL;
-    off_t added=0;
-    for (size_t offset=0;;)
-    {
-        char *newline=memchr(data+offset, '\n', total-offset);
-        size_t bytes=newline ? (size_t)(newline-data)-offset : total-offset;
-        if (bytes > INT_MAX) { errno=EFBIG; goto failed; }
-        file_lines *next=malloc(sizeof(*next));
-        if (!next) goto failed;
-        next->line=malloc(bytes+1);
-        if (!next->line) { free(next); goto failed; }
-        memcpy(next->line, data+offset, bytes);
-        next->line_length=bytes;
-        next->next=NULL;
-        if (tail) tail->next=next;
-        else head=next;
-        tail=next;
-        added++;
-        if (!newline) break;
-        offset+=bytes+1;
-    }
+    file_lines *tail;
+    off_t added;
+    file_lines *head=split_file_lines(data, total, &added, &tail);
+    if (!head) { free(data); return -1; }
     file_lines *after=last->next, *old=first->next;
     free(first->line);
     (*num_lines)--;
@@ -264,11 +206,6 @@ static int replace_text_range(file_lines *lines, off_t start, off_t end, const c
     free(data);
     *num_lines+=added;
     return 0;
-
-failed:
-    free_file_lines(head);
-    free(data);
-    return -1;
 }
 
 // Keep a mark attached to its original text when surrounding bytes are edited.
@@ -373,9 +310,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
 {
     int row=getcury(win), column=0, match_end=0, attributes=COLOR_PAIR(COLOR_WHITE_ON_BLUE);
     int tab_width=sizeof(tab_marker)-1;
-    char *text=malloc(line->line_length+1);
-    memcpy(text, line->line, line->line_length);
-    text[line->line_length]='\0';
+    const char *text=line->line;
     for (int offset=0; offset < line->line_length && column < current_col+max_x;)
     {
         wchar_t chars[CCHARW_MAX];
@@ -406,7 +341,6 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         column+=width;
         offset+=bytes;
     }
-    free(text);
 }
 
 
@@ -491,13 +425,8 @@ int view_edit_file(char *filename, int editor_mode) {
     int cursor_byte=0, input=ERR;
     while (1)
     {
-        file_lines *current_line=lines;
-        off_t seek=0;
-        for (int i=0; i < cursor_row; i++)
-        {
-            seek+=current_line->line_length+1;
-            current_line=current_line->next;
-        }
+        off_t seek;
+        file_lines *current_line=line_at_row(lines, cursor_row, &seek);
         int column=text_column(current_line->line, cursor_byte, tab_width);
         // Insertions and line joins can attach existing combining marks to the preceding character.
         cursor_byte=text_offset(current_line->line, current_line->line_length, column, tab_width);
@@ -529,13 +458,8 @@ int view_edit_file(char *filename, int editor_mode) {
         draw_buttons(max_y, max_x, buttons);
         wnoutrefresh(stdscr);
         werase(content_win);
-        file_lines *shown=lines;
-        off_t shown_position=0;
-        for (int i=0; i < screen_start_line; i++)
-        {
-            shown_position+=shown->line_length+1;
-            shown=shown->next;
-        }
+        off_t shown_position;
+        file_lines *shown=line_at_row(lines, screen_start_line, &shown_position);
         int shown_rows=0;
         for (; shown && shown_rows < max_y-2; shown_rows++, shown=shown->next)
         {
@@ -745,11 +669,7 @@ int view_edit_file(char *filename, int editor_mode) {
             case KEY_RIGHT:
                 if (!editor_mode) screen_start_col+=10;
                 else if (cursor_byte < current_line->line_length)
-                {
-                    wchar_t chars[CCHARW_MAX];
-                    int width;
-                    cursor_byte+=text_cell(current_line->line+cursor_byte, current_line->line_length-cursor_byte, chars, &width);
-                }
+                    cursor_byte=text_next(current_line->line, current_line->line_length, cursor_byte);
                 else if (current_line->next)
                 {
                     cursor_row++;
@@ -791,11 +711,7 @@ int view_edit_file(char *filename, int editor_mode) {
             case KEY_DC:
                 if (!editor_mode) break;
                 if (cursor_byte < current_line->line_length)
-                {
-                    wchar_t chars[CCHARW_MAX];
-                    int width, bytes=text_cell(current_line->line+cursor_byte, current_line->line_length-cursor_byte, chars, &width);
-                    edit_end+=bytes;
-                }
+                    edit_end=seek+text_next(current_line->line, current_line->line_length, cursor_byte);
                 else if (current_line->next) edit_end++;
                 break;
             case KEY_MOUSE:
@@ -814,10 +730,8 @@ int view_edit_file(char *filename, int editor_mode) {
                 if (event.x >= max_x) event.x=max_x-1;
                 cursor_row=screen_start_line+event.y-1;
                 if (cursor_row >= num_lines) cursor_row=num_lines-1;
-                file_lines *line=lines;
-                off_t mouse_position=0;
-                for (int row=0; row < cursor_row; row++, line=line->next)
-                    mouse_position+=line->line_length+1;
+                off_t mouse_position;
+                file_lines *line=line_at_row(lines, cursor_row, &mouse_position);
                 cursor_byte=text_offset(line->line, line->line_length, screen_start_col+event.x, tab_width);
                 mouse_position+=cursor_byte;
                 // A press clears the old block; subsequent motion selects from this anchor.
@@ -888,8 +802,7 @@ int view_edit_file(char *filename, int editor_mode) {
         free(block);
         if (target_column >= 0)
         {
-            current_line=lines;
-            for (int i=0; i < cursor_row; i++) current_line=current_line->next;
+            current_line=line_at_row(lines, cursor_row, NULL);
             cursor_byte=text_offset(current_line->line, current_line->line_length, target_column, tab_width);
         }
     }
@@ -905,12 +818,4 @@ close_editor:
     delwin(content_win);
     free_file_lines(lines);
     return 0;
-}
-
-int view_file(char *filename) {
-    return view_edit_file(filename, 0);
-}
-
-int edit_file(char *filename) {
-    return view_edit_file(filename, 1);
 }

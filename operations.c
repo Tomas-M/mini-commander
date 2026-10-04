@@ -2,6 +2,45 @@
 #include "types.h"
 #include "globals.h"
 
+// Scan once for progress totals, then perform the requested operation on the same selection.
+void run_file_operation(OperationFunc operation, char *target)
+{
+    operationContext context={0};
+    panel_mass_action(countstats_operation, "", &context);
+    if (context.abort) return;
+    context.current_items=0;
+    panel_mass_action(operation, target, &context);
+}
+
+
+// Share overwrite choices across regular files, symbolic links and renames.
+static int confirm_overwrite(const char *target, operationContext *context)
+{
+    if (context->confirm_all_no) return OPERATION_SKIP;
+    if (context->confirm_all_yes) return OPERATION_OK;
+    int button=show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", target),
+        (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0, 0);
+    if (button == 3) context->confirm_all_yes=1;
+    if (button == 1 || button == 3) return OPERATION_OK;
+    if (button == 5) { context->abort=1; return OPERATION_ABORT; }
+    if (button == 4) context->confirm_all_no=1;
+    context->keep_item_selected=1;
+    return OPERATION_SKIP;
+}
+
+// Handle all recoverable operation errors consistently; closing the dialog skips the item.
+static int operation_error(char *message, operationContext *context)
+{
+    int error=errno;
+    if (context->skip_all) return OPERATION_SKIP;
+    int button=show_dialog(error ? SPRINTF("%s\n%s (%d)", message, strerror(error), error) : message,
+        (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0, 0);
+    if (button == 3) return OPERATION_RETRY;
+    if (button == 4) { context->abort=1; return OPERATION_ABORT; }
+    if (button == 2) context->skip_all=1;
+    context->keep_item_selected=1;
+    return OPERATION_SKIP;
+}
 
 int panel_mass_action(OperationFunc operation, char *tgt, operationContext *context) {
     int err = 0;
@@ -89,13 +128,8 @@ int recursive_operation(const char *src, const char *tgt, operationContext *cont
     ret = operation(src, tgt, context);
     if (context->abort == 1) return OPERATION_ABORT;
 
-    if (ret == OPERATION_OK) {
-        // operation on parent item was OK, finish here
-        return ret;
-    } else if (ret == OPERATION_SKIP) {
-        // do nothing, return skip
-        return ret;
-    } else if (ret == OPERATION_PARENT_OK_PROCESS_CHILDS || ret == OPERATION_RETRY_AFTER_CHILDS) {
+    if (ret == OPERATION_OK || ret == OPERATION_SKIP) return ret;
+    if (ret == OPERATION_PARENT_OK_PROCESS_CHILDS || ret == OPERATION_RETRY_AFTER_CHILDS) {
         // Recursive operation on a directory is needed for further processing
         struct stat statbuf = {0};
         lstat(src, &statbuf); // no error checking, we assume that if original operation was ok, this will be ok too
@@ -108,21 +142,16 @@ int recursive_operation(const char *src, const char *tgt, operationContext *cont
                 char source_path[CMD_MAX];
                 char target_path[CMD_MAX];
                 sprintf(source_path, "%s%s%s", src, src[strlen(src) - 1] == '/' ? "" : "/", entry->d_name);
-                sprintf(target_path, "%s%s%s", tgt, tgt[strlen(tgt) - 1] == '/' ? "" : "/", entry->d_name);
+                sprintf(target_path, "%s%s%s", tgt, *tgt && tgt[strlen(tgt) - 1] == '/' ? "" : "/", entry->d_name);
                 recursive_operation(source_path, target_path, context, operation);
-                if (context->abort == 1) return 0;
+                if (context->abort == 1) { closedir(dir); return 0; }
             }
             closedir(dir);
             if (ret == OPERATION_RETRY_AFTER_CHILDS) {
                 // try again the initial src
                 ret = operation(src, tgt, context);
                 if (context->abort == 1) return 0;
-                if (ret == OPERATION_OK) {
-                    // operation on parent item was OK, finish here
-                } else {
-                    // print error
-                    return ret;
-                }
+                if (ret != OPERATION_OK) return ret;
             }
         } else {
             // no childs, end ok
@@ -153,9 +182,6 @@ int countstats_operation(const char *src, const char *tgt, operationContext *con
     sprintf(infotext, "Items: %lld\nSize: %s bytes", context->total_items, num);
 
     int delta = update_progress_dialog_delta(SPRINTF("Scanning %s", src), 0, 0, infotext);
-    if (delta == 1) {
-        // ignored here
-    }
     if (delta == 2) {
         context->abort = 1;
         return OPERATION_ABORT;
@@ -173,9 +199,6 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
     errno = 0;
 
     int delta = update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
-    if (delta == 1) {
-        // ignored
-    }
     if (delta == 2) {
         context->abort = 1;
         return OPERATION_ABORT;
@@ -186,12 +209,9 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
         struct stat statbuf;
         ret = lstat(src, &statbuf);
         if (ret != 0) {
-            if (context->skip_all == 1) return OPERATION_SKIP;
-            btn = show_dialog(SPRINTF("Stat failed for \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0, 0);
-            if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
-            if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
-            if (btn == 3) { ret = OPERATION_RETRY; continue; }
-            if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
+            ret=operation_error(SPRINTF("Stat failed for \"%s\"", src), context);
+            if (ret != OPERATION_RETRY) return ret;
+            continue;
         }
 
         if (S_ISDIR(statbuf.st_mode)) {
@@ -225,7 +245,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
                         sprintf(context->confirm_yes_prefix, "%s", src);
                     }
                     return OPERATION_RETRY_AFTER_CHILDS;
-                } else if (btn == 2 || btn == 0) { // no
+                } else if (btn <= 0 || btn == 2) { // no
                     context->keep_item_selected = 1;
                     return OPERATION_SKIP;
                 } else if (btn == 3) { // all
@@ -240,26 +260,16 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
                     return OPERATION_SKIP;
                 }
             } else {
-                if (context->skip_all == 1) return OPERATION_SKIP;
-                btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0, 0);
-                if (btn == 0 || btn == 1) { context->keep_item_selected = 1; return OPERATION_SKIP; }
-                if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
-                if (btn == 3) { ret = OPERATION_RETRY; continue; }
-                if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
+                ret=operation_error(SPRINTF("Cannot remove \"%s\"", src), context);
+                if (ret != OPERATION_RETRY) return ret;
             }
         } else {
-            ret = unlink(src);
-            if (ret == 0) return OPERATION_OK;
-            else {
-                if (context->skip_all == 1) return OPERATION_SKIP;
-                btn = show_dialog(SPRINTF("Cannot remove \"%s\"\n%s (%d)", src, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0, 0);
-                if (btn == 0 || btn == 1) return OPERATION_SKIP;
-                if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
-                if (btn == 3) { ret = OPERATION_RETRY; continue; }
-                if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
-            }
+            if (unlink(src) == 0) return OPERATION_OK;
+            ret=operation_error(SPRINTF("Cannot remove \"%s\"", src), context);
+            if (ret != OPERATION_RETRY) return ret;
         }
     }
+    return OPERATION_OK;
 }
 
 
@@ -268,9 +278,6 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
     errno = 0; // reset
 
     int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
-    if (delta == 1) {
-        // ignored here
-    }
     if (delta == 2) {
         context->abort = 1;
         return OPERATION_ABORT;
@@ -278,7 +285,6 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
 
     while (ret == OPERATION_RETRY) {
 
-        int btn = 0;
         char errmsg[CMD_MAX] = {0};
         int target_exists = 1;
 
@@ -324,38 +330,13 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                 int tgt_fd = open(tgt, O_WRONLY | O_CREAT | O_EXCL, statbufsrc.st_mode);
                 if (tgt_fd == -1) {
                     if (errno == EEXIST) {
-                        // ask user if overwrite
-                        btn = 0;
-                        if (context->confirm_all_yes == 1) btn = 1;
-                        if (context->confirm_all_no == 1) btn = 2;
-                        if (btn == 0) {
-                            btn = show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0, 0);
-                        }
-                        if (btn == 3) { // All
-                            context->confirm_all_yes = 1;
-                            btn = 1;
-                        }
-                        if (btn == 1) { // Yes
-                            tgt_fd = open(tgt, O_WRONLY | O_CREAT, statbufsrc.st_mode);
-                            if (tgt_fd == -1) {
-                                close(src_fd);
-                                sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
-                                break;
-                            }
-                        }
-                        if (btn <= 0 || btn == 2) { // No or cancelled
+                        int decision=confirm_overwrite(tgt, context);
+                        if (decision != OPERATION_OK) { close(src_fd); return decision; }
+                        tgt_fd=open(tgt, O_WRONLY | O_CREAT, statbufsrc.st_mode);
+                        if (tgt_fd == -1) {
                             close(src_fd);
-                            return OPERATION_SKIP;
-                        }
-                        if (btn == 4) { // None
-                            close(src_fd);
-                            context->confirm_all_no = 1;
-                            return OPERATION_SKIP;
-                        }
-                        if (btn == 5) {
-                            close(src_fd);
-                            context->abort = 1;
-                            return OPERATION_ABORT;
+                            sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
+                            break;
                         }
                     } else {
                         close(src_fd);
@@ -418,7 +399,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     break;
                 }
 
-                int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), statbufsrc.st_size > 0 ? total_bytes * 100 / statbufsrc.st_size : 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
+                update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), statbufsrc.st_size > 0 ? total_bytes * 100 / statbufsrc.st_size : 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
 
                 close(src_fd);
                 close(tgt_fd);
@@ -447,31 +428,11 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                 buffer[len] = '\0';
 
                 if (target_exists) {
-                    // Ask user if they want to overwrite
-                    btn = 0;
-                    if (context->confirm_all_yes == 1) btn = 1;
-                    if (context->confirm_all_no == 1) btn = 2;
-                    if (btn == 0) {
-                        btn = show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0, 0);
-                    }
-                    if (btn == 3) { // All
-                        context->confirm_all_yes = 1;
-                        btn = 1;
-                    }
-                    if (btn == 1) { // Yes
-                        // Remove the existing target
-                        if (unlink(tgt) == -1) {
-                            sprintf(errmsg, "Failed to remove existing target file\n%s", tgt);
-                            break;
-                        }
-                    } else if (btn == 2 || btn == 0) { // No
-                        return OPERATION_SKIP;
-                    } else if (btn == 4) { // None
-                        context->confirm_all_no = 1;
-                        return OPERATION_SKIP;
-                    } else if (btn == 5) { // abort
-                        context->abort = 1;
-                        return OPERATION_ABORT;
+                    int decision=confirm_overwrite(tgt, context);
+                    if (decision != OPERATION_OK) return decision;
+                    if (unlink(tgt) == -1) {
+                        sprintf(errmsg, "Failed to remove existing target file\n%s", tgt);
+                        break;
                     }
                 }
 
@@ -494,17 +455,10 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
         } while (false);
 
 
-        if (strlen(errmsg) > 0) {
-            if (context->skip_all == 1) return OPERATION_SKIP;
-            if (errno != 0) {
-                btn = show_dialog(SPRINTF("%s\n%s (%d)", errmsg, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0, 0);
-            } else {
-                btn = show_dialog(SPRINTF("%s", errmsg), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0, 0);
-            }
-            if (btn == 1 || btn == 0) { context->keep_item_selected = 1; return OPERATION_SKIP; }
-            if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
-            if (btn == 3) { ret = OPERATION_RETRY; continue; }
-            if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
+        if (errmsg[0]) {
+            ret=operation_error(errmsg, context);
+            if (ret == OPERATION_RETRY) continue;
+            return ret;
         }
 
         return OPERATION_PARENT_OK_PROCESS_CHILDS;
@@ -519,18 +473,12 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
     errno = 0; // reset
 
     int delta = update_progress_dialog_delta(SPRINTF("Renaming\n%s\nTo\n%s", src, tgt), 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
-    if (delta == 1) {
-        // ignored here
-    }
     if (delta == 2) {
         context->abort = 1;
         return OPERATION_ABORT;
     }
 
     while (ret == OPERATION_RETRY) {
-        int btn = 0;
-        char errmsg[CMD_MAX] = {0};
-
         // Prefer atomic no-replace without requiring recent glibc or kernel headers.
         ret=-1;
         errno=ENOSYS;
@@ -547,29 +495,13 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
         }
         if (ret != 0 && errno == EEXIST)
         {
-            if (context->confirm_all_yes) btn=1;
-            else if (context->confirm_all_no) btn=4;
-            else btn=show_dialog(SPRINTF("Target file exists:\n%s\nOverwrite this file?", tgt), (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0, 0);
-
-            if (btn == 3) { context->confirm_all_yes=1; btn=1; }
-            if (btn == 5) { context->abort=1; return OPERATION_ABORT; }
-            if (btn != 1)
-            {
-                if (btn == 4) context->confirm_all_no=1;
-                context->keep_item_selected=1;
-                return OPERATION_SKIP;
-            }
+            int decision=confirm_overwrite(tgt, context);
+            if (decision != OPERATION_OK) return decision;
             ret=rename(src, tgt);
         }
         if (ret == 0) return OPERATION_OK;
-        if (ret != 0) {
-            if (context->skip_all == 1) return OPERATION_SKIP;
-            btn = show_dialog(SPRINTF("Failed to rename\n%s\nTo\n%s\n%s (%d)", src, tgt, strerror(errno), errno), (char *[]) {"Skip", "Skip all", "Retry", "Abort", NULL}, 0, NULL, 1, 0, 0);
-            if (btn <= 1) { context->keep_item_selected = 1; return OPERATION_SKIP; }
-            if (btn == 2) { context->keep_item_selected = 1; context->skip_all = 1; return OPERATION_SKIP; }
-            if (btn == 3) { ret = OPERATION_RETRY; continue; }
-            if (btn == 4) { context->abort = 1; return OPERATION_ABORT; }
-        }
+        ret=operation_error(SPRINTF("Failed to rename\n%s\nTo\n%s", src, tgt), context);
+        if (ret != OPERATION_RETRY) return ret;
     }
     return OPERATION_OK;
 }
@@ -628,12 +560,5 @@ int mkdir_recursive(const char *path, mode_t mode) {
 
 int file_exists(const char *path) {
     struct stat info;
-
-    if (lstat(path, &info) != 0) {
-        // If stat fails, the path does not exist
-        return 0;
-    }
-
-    return 1;
+    return lstat(path, &info) == 0;
 }
-

@@ -168,6 +168,35 @@ static void check_ranges(void)
     free_file_lines(lines);
 }
 
+// Loading preserves every byte and leaves a terminator outside each line's data.
+static void check_loading(void)
+{
+    const char data[]="\0a\r\n\n中é\t\n";
+    char path[]="/tmp/mc-loading-XXXXXX", actual[sizeof(data)];
+    int fd=mkstemp(path);
+    assert(fd >= 0);
+    for (size_t length=0; length < sizeof(data); length++)
+    {
+        assert(ftruncate(fd, 0) == 0 && lseek(fd, 0, SEEK_SET) == 0);
+        assert(write(fd, data, length) == (ssize_t)length);
+        off_t rows, bytes;
+        file_lines *lines=read_file_lines(path, &rows, &bytes);
+        assert(lines && bytes == length);
+        copy_text_range(lines, 0, bytes, actual);
+        assert(!memcmp(actual, data, length));
+        for (file_lines *line=lines; line; line=line->next) assert(line->line[line->line_length] == '\0');
+        free_file_lines(lines);
+        for (int failure=0; failure < 2; failure++)
+        {
+            allocation_failure=failure;
+            assert(read_file_lines(path, &rows, &bytes) == NULL);
+        }
+        allocation_failure=-1;
+    }
+    close(fd);
+    unlink(path);
+}
+
 // Selection overrides syntax/control colors without drawing a space for the newline.
 static void check_rendering(void)
 {
@@ -231,6 +260,7 @@ int main(void)
 {
     setlocale(LC_CTYPE, "C.UTF-8");
     check_ranges();
+    check_loading();
     FILE *output=tmpfile(), *input=tmpfile();
     screen=newterm("xterm", output, input);
     assert(screen);

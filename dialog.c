@@ -123,27 +123,8 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
 
     show_shadow(win);
 
-    mvwaddch(win, 1, 1, '+'); // Top left corner
-    mvwaddch(win, 1, width - 2, '+'); // Top right corner
-    mvwaddch(win, height - 2, 1, '+'); // Bottom left corner
-    mvwaddch(win, height - 2, width - 2, '+'); // Bottom right corner
-    mvwhline(win, 1, 2, '-', width - 4); // Top border
-    mvwhline(win, height - 2, 2, '-', width - 4); // Bottom border
-    mvwvline(win, 2, 1, '|', height - 4); // Left border
-    mvwvline(win, 2, width - 2, '|', height - 4); // Right border
-    mvwhline(win, height - 4 - (vertical_buttons ? total_buttons - 1: 0), 2, '-', width - 4); // Horizontal line above buttons
-    mvwaddch(win, height - 4 - (vertical_buttons ? total_buttons - 1: 0), 1, '+'); // Left intersection
-    mvwaddch(win, height - 4 - (vertical_buttons ? total_buttons - 1: 0), width - 2, '+'); // Right intersection
-
-    int title_line = 2;
-    title_copy = strdup(title);
-    line = strtok(title_copy, "\n");
-    while (line) {
-        mvwprintw(win, title_line, 3, "%s", line);
-        line = strtok(NULL, "\n");
-        title_line++;
-    }
-    free(title_copy);
+    draw_dialog_frame(win, height-4-(vertical_buttons ? total_buttons-1 : 0));
+    draw_dialog_text(win, 2, title);
 
     return win;
 }
@@ -172,15 +153,14 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
 
     for (int i=0; buttons[i]; i++) {
         dialog_button button=dialog_button_bounds(win, title, buttons, i, prompt_present, vertical_buttons);
+        attr_t attributes;
+        short color;
+        wattr_get(win, &attributes, &color, NULL);
         if (i == selected && !editing_prompt) {
-            if (is_danger) {
-                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
-                wattroff(win, A_BOLD);
-            } else {
-                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_BTN));
-            }
-            move_cursor_pos_x = button.x + 2;
-            move_cursor_pos_y = button.y;
+            wattr_set(win, is_danger ? attributes & ~A_BOLD : attributes,
+                is_danger ? COLOR_BLACK_ON_WHITE : COLOR_BLACK_ON_CYAN_BTN, NULL);
+            move_cursor_pos_x=button.x+2;
+            move_cursor_pos_y=button.y;
         }
         if (vertical_buttons) {
             mvwprintw(win, button.y, button.x, " [%s] ", i == selected && !editing_prompt ? "x" : " ");
@@ -189,14 +169,7 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
         } else {
             mvwprintw(win, button.y, button.x, "[ %s ]", buttons[i]);
         }
-        if (i == selected && !editing_prompt) {
-            if (is_danger) {
-                wattron(win, COLOR_PAIR(COLOR_WHITE_ON_RED));
-                wattron(win, A_BOLD);
-            } else {
-                wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
-            }
-        }
+        wattr_set(win, attributes, color, NULL);
     }
 
     if (move_cursor_pos_x > 0 || move_cursor_pos_y > 0) {
@@ -243,8 +216,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
     int ch, pressed_button=-1;
     int cursor_position = strlen(prompt);
     int prompt_offset = 0;
-    int width, height;
-    getmaxyx(win, height, width);
+    int width=getmaxx(win);
     int max_prompt_display = width - 6;
     // Shifted file actions start with an editable name instead of a selected default.
     int prompt_modified=edit_prompt;
@@ -258,20 +230,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_PMPT));
             if (!prompt_modified) wattron(win, A_BOLD);
             mvwhline(win, 2+lines(title), 3, ' ', max_prompt_display);
-            int length=strlen(prompt), x=0, cell_width;
-            for (int offset=0; offset < length && x < prompt_offset+max_prompt_display;)
-            {
-                wchar_t chars[CCHARW_MAX];
-                offset+=text_cell(prompt+offset, length-offset, chars, &cell_width);
-                if (!iswprint(chars[0])) chars[0]=L'.';
-                if (x >= prompt_offset && x+cell_width <= prompt_offset+max_prompt_display)
-                {
-                    cchar_t cell;
-                    setcchar(&cell, chars, prompt_modified ? 0 : A_BOLD, COLOR_BLACK_ON_CYAN_PMPT, NULL);
-                    mvwadd_wchnstr(win, 2+lines(title), 3+x-prompt_offset, &cell, 1);
-                }
-                x+=cell_width;
-            }
+            draw_text(win, 2+lines(title), 3, prompt, prompt_offset, max_prompt_display);
             wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
             if (!prompt_modified) wattroff(win, A_BOLD);
             wmove(win, 2+lines(title), 3+column-prompt_offset);
@@ -298,9 +257,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
             case KEY_RIGHT:
                 if (editing_prompt) {
                     if (cursor_position < strlen(prompt)) {
-                        wchar_t chars[CCHARW_MAX];
-                        int cell_width;
-                        cursor_position+=text_cell(prompt+cursor_position, strlen(prompt)-cursor_position, chars, &cell_width);
+                        cursor_position=text_next(prompt, strlen(prompt), cursor_position);
                     }
                     prompt_modified = 1;
                 } else if (!editing_prompt) {
@@ -321,8 +278,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
                 break;
             case KEY_DC: // Handling the Del key
                if (editing_prompt && cursor_position < strlen(prompt)) {
-                   wchar_t chars[CCHARW_MAX];
-                   int cell_width, bytes=text_cell(prompt+cursor_position, strlen(prompt)-cursor_position, chars, &cell_width);
+                   int bytes=text_next(prompt, strlen(prompt), cursor_position)-cursor_position;
                    memmove(prompt+cursor_position, prompt+cursor_position+bytes, strlen(prompt)-cursor_position-bytes+1);
                    prompt_modified = 1;
                }

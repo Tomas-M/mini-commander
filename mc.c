@@ -51,12 +51,12 @@ int main(int argc, char *argv[]) {
                 color_enabled = 0;
                 break;
             case 'h':
-                fprintf(stderr, "Mini Commander (c) 2023 Tomas Matejicek + ChatGPT\n", argv[0]);
+                fprintf(stderr, "Mini Commander (c) 2023 Tomas Matejicek + ChatGPT\n");
                 fprintf(stderr, "Usage: %s [-b|--nocolor] [-h|--help]\n", argv[0]);
                 return 1;
                 break;
             case 'v':
-                fprintf(stderr, "Version 2.0\n", argv[0]);
+                fprintf(stderr, "Version 2.0\n");
                 return 1;
                 break;
         }
@@ -143,79 +143,30 @@ int main(int argc, char *argv[]) {
             update_files_in_both_panels();
         }
 
-        if (ch == KEY_F(3)) { // F3
-            if (current) {
-                if (current->is_dir) {
-                    dive_into_directory(current);
-                } else {
-                    char file[CMD_MAX] = {};
-                    sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
-                    view_file(file);
-                    redraw_ui();
-                }
+        if ((ch == KEY_F(3) || ch == KEY_F(4)) && current) {
+            if (current->is_dir) dive_into_directory(current);
+            else {
+                view_edit_file(SPRINTF("%s/%s", active_panel->path, active_panel->file_under_cursor), ch == KEY_F(4));
+                redraw_ui();
+                if (ch == KEY_F(4)) update_files_in_both_panels();
             }
         }
 
-
-        if (ch == KEY_F(4)) { // F4
-            if (current) {
-                if (current->is_dir) {
-                    dive_into_directory(current);
-                } else {
-                    char file[CMD_MAX] = {};
-                    sprintf(file, "%s/%s", active_panel->path, active_panel->file_under_cursor);
-                    edit_file(file);
-                    redraw_ui();
-                    update_files_in_both_panels();
-               }
-           }
-        }
-
-        if (ch == KEY_F(5) || ch == KEY_SHIFT_F5) { // Copy
+        int copying=ch == KEY_F(5) || ch == KEY_SHIFT_F5;
+        int moving=ch == KEY_F(6) || ch == KEY_SHIFT_F6;
+        if (copying || moving) {
             if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
                 show_errormsg("Cannot operate on \"..\"");
                 continue;
             }
-            char title[CMD_MAX] = {0};
-            char prompt[CMD_MAX] = {0};
-            snprintf(prompt, sizeof(prompt), "%s", active_panel == &left_panel ? right_panel.path : left_panel.path);
-            if (ch == KEY_SHIFT_F5) snprintf(prompt, sizeof(prompt), "%s", active_panel->file_under_cursor);
-            sprintf(title, "Copy %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0, ch == KEY_SHIFT_F5);
-            if (btn == 1) {
-                operationContext stats = {0};
-                operationContext context = {0};
-                panel_mass_action(countstats_operation, "", &stats);
-                if (stats.abort != 1) {
-                    context.total_items = stats.total_items;
-                    context.total_size =  stats.total_size;
-                    panel_mass_action(copy_operation, prompt, &context);
-                }
-            }
-            update_files_in_both_panels();
-        }
-
-        if (ch == KEY_F(6) || ch == KEY_SHIFT_F6) { // Move / rename
-            if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
-                show_errormsg("Cannot operate on \"..\"");
-                continue;
-            }
-            char title[CMD_MAX] = {0};
-            char prompt[CMD_MAX] = {0};
-            snprintf(prompt, sizeof(prompt), "%s", active_panel == &left_panel ? right_panel.path : left_panel.path);
-            if (ch == KEY_SHIFT_F6) snprintf(prompt, sizeof(prompt), "%s", active_panel->file_under_cursor);
-            sprintf(title, "Move %d file%s/director%s to:", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
-            int btn = show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0, ch == KEY_SHIFT_F6);
-            if (btn == 1) {
-                operationContext stats = {0};
-                operationContext context = {0};
-                panel_mass_action(countstats_operation, "", &stats);
-                if (stats.abort != 1) {
-                    context.total_items = stats.total_items;
-                    context.total_size =  stats.total_size;
-                    panel_mass_action(move_operation, prompt, &context);
-                }
-            }
+            int edit_name=ch == KEY_SHIFT_F5 || ch == KEY_SHIFT_F6;
+            int count=active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1;
+            char title[CMD_MAX], prompt[CMD_MAX];
+            const char *target=active_panel == &left_panel ? right_panel.path : left_panel.path;
+            snprintf(prompt, sizeof(prompt), "%s", edit_name ? active_panel->file_under_cursor : target);
+            snprintf(title, sizeof(title), "%s %d file%s/director%s to:", copying ? "Copy" : "Move", count, count > 1 ? "s" : "", count > 1 ? "ies" : "y");
+            if (show_dialog(title, (char *[]) {"OK", "Cancel", NULL}, 0, prompt, 0, 0, edit_name) == 1)
+                run_file_operation(copying ? copy_operation : move_operation, prompt);
             update_files_in_both_panels();
         }
 
@@ -261,16 +212,7 @@ int main(int argc, char *argv[]) {
             sprintf(title, "Delete %d file%s/director%s?", active_panel->num_selected_files > 0 ? active_panel->num_selected_files : 1, active_panel->num_selected_files > 1 ? "s" : "", active_panel->num_selected_files > 1 ? "ies" : "y");
             int btn = show_dialog(title, (char *[]) {"Yes", "No", NULL}, 0, NULL, 1, 0, 0);
 
-            if (btn == 1) {
-                operationContext stats = {0};
-                operationContext context = {0};
-                panel_mass_action(countstats_operation, "", &stats);
-                if (stats.abort != 1) {
-                    context.total_items = stats.total_items;
-                    context.total_size =  stats.total_size;
-                    panel_mass_action(delete_operation, "", &context);
-                }
-            }
+            if (btn == 1) run_file_operation(delete_operation, "");
             update_files_in_both_panels();
             redraw_ui();
         }
@@ -280,7 +222,7 @@ int main(int argc, char *argv[]) {
         }
 
 
-        if (ch == KEY_RESIZE) {  // Handle terminal resize
+        if (ch == KEY_RESIZE || ch == 12) {  // Resize or Ctrl+L
             endwin();
             init_screen();
             redraw_ui();
@@ -356,12 +298,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        if (ch == 12) {  // Ctrl+L
-            endwin();
-            init_screen();
-            redraw_ui();
-        }
-
         if (ch == 15) {  // Ctrl+O
             mouse_tracking(0);
             endwin();
@@ -397,8 +333,7 @@ int main(int argc, char *argv[]) {
 
         if (ch == KEY_DC) {
             if (cursor_pos < cmd_len) {
-                wchar_t chars[CCHARW_MAX];
-                int width, bytes=text_cell(cmd+cursor_pos, cmd_len-cursor_pos, chars, &width);
+                int bytes=text_next(cmd, cmd_len, cursor_pos)-cursor_pos;
                 memmove(cmd+cursor_pos, cmd+cursor_pos+bytes, cmd_len-cursor_pos-bytes+1);
                 cmd_len-=bytes;
             }
@@ -407,11 +342,7 @@ int main(int argc, char *argv[]) {
 
         if (ch == KEY_LEFT && cursor_pos > 0) cursor_pos=text_previous(cmd, cursor_pos);
 
-        if (ch == KEY_RIGHT && cursor_pos < cmd_len) {
-            wchar_t chars[CCHARW_MAX];
-            int width;
-            cursor_pos+=text_cell(cmd+cursor_pos, cmd_len-cursor_pos, chars, &width);
-        }
+        if (ch == KEY_RIGHT && cursor_pos < cmd_len) cursor_pos=text_next(cmd, cmd_len, cursor_pos);
 
         if (ch == KEY_UP) {
             active_panel->selected_index--;
@@ -479,31 +410,15 @@ int main(int argc, char *argv[]) {
 
 
         if (active_panel->search_mode) {
-            FileNode *files = active_panel->files;
-            int index = 0;
-            int found = -1;
-
-            // search from beginning while we get to current item anyway
-            while (files != NULL && index < active_panel->selected_index) {
-                if (strncmp(active_panel->search_text, files->name, strlen(active_panel->search_text)) == 0) {
-                    if (found == -1) found = index;
-                }
-                index++;
-                files = files->next;
+            int found=-1, index=0, length=strlen(active_panel->search_text);
+            for (FileNode *file=active_panel->files; file; file=file->next, index++) {
+                if (search_skip_current && index == active_panel->selected_index) continue;
+                if (strncmp(active_panel->search_text, file->name, length) != 0) continue;
+                // Keep the first match as a wraparound fallback until we reach the cursor.
+                if (found < 0) found=index;
+                if (index >= active_panel->selected_index) { found=index; break; }
             }
-
-            if (search_skip_current) { index++; files = files->next; }
-
-            while (files != NULL) {
-                if (strncmp(active_panel->search_text, files->name, strlen(active_panel->search_text)) == 0) {
-                    found = index;
-                    break;
-                }
-                index++;
-                files = files->next;
-            }
-
-            if (found >= 0) active_panel->selected_index = found;
+            if (found >= 0) active_panel->selected_index=found;
         }
 
 

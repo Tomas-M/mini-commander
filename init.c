@@ -56,36 +56,31 @@ void init_screen() {
     noecho();
     curs_set(1);
 
-    if (color_enabled) {
-        init_pair(COLOR_WHITE_ON_BLACK, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_BLACK_ON_WHITE, COLOR_BLACK, COLOR_WHITE);
-        init_pair(COLOR_WHITE_ON_RED, COLOR_WHITE, COLOR_RED);
-        init_pair(COLOR_WHITE_ON_BLUE, COLOR_WHITE, COLOR_BLUE);
-        init_pair(COLOR_YELLOW_ON_BLUE, COLOR_YELLOW, COLOR_BLUE);
-        init_pair(COLOR_GREEN_ON_BLUE, COLOR_GREEN, COLOR_BLUE);
-        init_pair(COLOR_RED_ON_BLUE, COLOR_RED, COLOR_BLUE);
-        init_pair(COLOR_MAGENTA_ON_BLUE, COLOR_MAGENTA, COLOR_BLUE);
-        init_pair(COLOR_CYAN_ON_BLUE, COLOR_CYAN, COLOR_BLUE);
-        init_pair(COLOR_CYAN_ON_BLACK, COLOR_CYAN, COLOR_BLACK);
-        init_pair(COLOR_YELLOW_ON_CYAN, COLOR_YELLOW, COLOR_CYAN);
-        init_pair(COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_CYAN);
-        init_pair(COLOR_BLACK_ON_CYAN_BTN, COLOR_BLACK, COLOR_CYAN);
-        init_pair(COLOR_BLACK_ON_CYAN_PMPT, COLOR_BLACK, COLOR_CYAN);
-    } else { // black and white mode
-        init_pair(COLOR_WHITE_ON_BLACK, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_BLACK_ON_WHITE, COLOR_BLACK, COLOR_WHITE);
-        init_pair(COLOR_WHITE_ON_RED, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_WHITE_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_YELLOW_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_GREEN_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_RED_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_MAGENTA_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_CYAN_ON_BLUE, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_CYAN_ON_BLACK, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_YELLOW_ON_CYAN, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_WHITE);
-        init_pair(COLOR_BLACK_ON_CYAN_BTN, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_BLACK_ON_CYAN_PMPT, COLOR_WHITE, COLOR_BLACK);
+    // Each row defines one color pair; monochrome keeps only the two light backgrounds.
+    static const short palette[][3]={
+        {COLOR_WHITE_ON_BLACK, COLOR_WHITE, COLOR_BLACK},
+        {COLOR_BLACK_ON_WHITE, COLOR_BLACK, COLOR_WHITE},
+        {COLOR_WHITE_ON_RED, COLOR_WHITE, COLOR_RED},
+        {COLOR_WHITE_ON_BLUE, COLOR_WHITE, COLOR_BLUE},
+        {COLOR_YELLOW_ON_BLUE, COLOR_YELLOW, COLOR_BLUE},
+        {COLOR_GREEN_ON_BLUE, COLOR_GREEN, COLOR_BLUE},
+        {COLOR_RED_ON_BLUE, COLOR_RED, COLOR_BLUE},
+        {COLOR_MAGENTA_ON_BLUE, COLOR_MAGENTA, COLOR_BLUE},
+        {COLOR_CYAN_ON_BLUE, COLOR_CYAN, COLOR_BLUE},
+        {COLOR_CYAN_ON_BLACK, COLOR_CYAN, COLOR_BLACK},
+        {COLOR_YELLOW_ON_CYAN, COLOR_YELLOW, COLOR_CYAN},
+        {COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_CYAN},
+        {COLOR_BLACK_ON_CYAN_BTN, COLOR_BLACK, COLOR_CYAN},
+        {COLOR_BLACK_ON_CYAN_PMPT, COLOR_BLACK, COLOR_CYAN}
+    };
+    for (size_t i=0; i < sizeof(palette)/sizeof(*palette); i++) {
+        short pair=palette[i][0], foreground=palette[i][1], background=palette[i][2];
+        if (!color_enabled) {
+            int light=pair == COLOR_BLACK_ON_WHITE || pair == COLOR_BLACK_ON_CYAN;
+            foreground=light ? COLOR_BLACK : COLOR_WHITE;
+            background=light ? COLOR_WHITE : COLOR_BLACK;
+        }
+        init_pair(pair, foreground, background);
     }
 }
 

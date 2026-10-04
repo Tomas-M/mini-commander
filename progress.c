@@ -20,26 +20,14 @@ void create_progress_dialog(int title_lines) {
     wattron(progress, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
     show_shadow(progress);
 
-    // Draw the borders and title
-    mvwaddch(progress, 1, 1, '+'); // Top left corner
-    mvwaddch(progress, 1, width - 2, '+'); // Top right corner
-    mvwaddch(progress, height - 2, 1, '+'); // Bottom left corner
-    mvwaddch(progress, height - 2, width - 2, '+'); // Bottom right corner
-    mvwhline(progress, 1, 2, '-', width - 4); // Top border
-    mvwhline(progress, height - 2, 2, '-', width - 4); // Bottom border
-    mvwvline(progress, 2, 1, '|', height - 4); // Left border
-    mvwvline(progress, 2, width - 2, '|', height - 4); // Right border
-    mvwhline(progress, height - 4, 2, '-', width - 4); // Horizontal line above buttons
-    mvwaddch(progress, height - 4, 1, '+'); // Left intersection
-    mvwaddch(progress, height - 4, width - 2, '+'); // Right intersection
+    draw_dialog_frame(progress, height-4);
 
     wrefresh(progress);
 }
 
 
 int update_progress_dialog(char *title, int current_progress, int total_progress, char *infotext) {
-    int width, height;
-    getmaxyx(progress, height, width);
+    int width=getmaxx(progress);
 
     if (current_progress > 100) current_progress = 100;
     if (total_progress > 100) total_progress = 100;
@@ -62,48 +50,20 @@ int update_progress_dialog(char *title, int current_progress, int total_progress
         return -1;
     }
 
-    // print title if provided
-    if (title != NULL) {
-        int title_line = 2;
-        char * title_copy = strdup(title);
-        char * line = strtok(title_copy, "\n");
-        while (line) {
-            mvwprintw(progress, title_line, 3, "%s", SHORTEN(line, width - 6));
-            line = strtok(NULL, "\n");
-            title_line++;
+    if (title) draw_dialog_text(progress, 2, title);
+
+    if (!infotext) {
+        int values[]={current_progress, total_progress};
+        int bar_width=width-12;
+        for (int i=0; i < 2; i++) {
+            int row=3+title_lines+i;
+            mvwaddch(progress, row, 3, '[');
+            mvwaddch(progress, row, width-8, ']');
+            mvwhline(progress, row, 4, '.', bar_width);
+            mvwhline(progress, row, 4, '#', values[i]*bar_width/100);
+            mvwprintw(progress, row, width-7, "%3d%%", values[i]);
         }
-        free(title_copy);
-    }
-
-    // Draw the progress bars if progress is provideed
-    if (infotext == NULL) {
-        mvwaddch(progress, 3 + title_lines, 3, '[');
-        mvwaddch(progress, 3 + title_lines, width - 8, ']');
-        mvwaddch(progress, 4 + title_lines, 3, '[');
-        mvwaddch(progress, 4 + title_lines, width - 8, ']');
-        mvwhline(progress, 3 + title_lines, 4, '.', width - 12);
-        mvwhline(progress, 4 + title_lines, 4, '.', width - 12);
-
-        mvwprintw(progress, 3 + title_lines, width - 7, "%3d%%", current_progress);
-        mvwprintw(progress, 4 + title_lines, width - 7, "%3d%%", total_progress);
-
-        int bar_width = width - 12;
-        int current_fill = (current_progress * bar_width) / 100;
-        int total_fill = (total_progress * bar_width) / 100;
-
-        for (int i = 0; i < current_fill; i++) { mvwaddch(progress, 3 + title_lines, 4 + i, '#'); }
-        for (int i = 0; i < total_fill; i++) { mvwaddch(progress, 4 + title_lines, 4 + i, '#'); }
-    } else {
-        int info_line = 2 + title_lines;
-        char * info_copy = strdup(infotext);
-        char * line = strtok(info_copy, "\n");
-        while (line) {
-            mvwprintw(progress, info_line, 3, "%s", SHORTEN(line, width - 6));
-            line = strtok(NULL, "\n");
-            info_line++;
-        }
-        free(info_copy);
-    }
+    } else draw_dialog_text(progress, 2+title_lines, infotext);
 
     char * buttons[] = {"Skip", "Abort", NULL};
 

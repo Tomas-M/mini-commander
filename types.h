@@ -61,7 +61,7 @@ typedef struct {
 } PanelMouse;
 
 typedef struct file_lines {
-    char *line;
+    char *line; // NUL-terminated for display; line_length also preserves embedded NULs.
     int line_length;
     struct file_lines *next;
 } file_lines;

@@ -36,6 +36,14 @@ int text_cell(const char *text, int length, wchar_t *chars, int *width)
     return bytes;
 }
 
+// Advance by one complete UTF-8 character, including its combining marks.
+int text_next(const char *text, int length, int position)
+{
+    wchar_t chars[CCHARW_MAX];
+    int width;
+    return position+text_cell(text+position, length-position, chars, &width);
+}
+
 // Find the preceding display character without stopping inside a UTF-8 sequence.
 int text_previous(const char *text, int position)
 {
@@ -76,6 +84,42 @@ int text_offset(const char *text, int length, int column, int tab_width)
         current+=width;
     }
     return offset;
+}
+
+// Shorten by terminal columns, keeping multibyte characters and their accents intact.
+void shorten(char *name, int width, char *result) {
+    result[0]='\0';
+    if (width <= 0) return;
+    wchar_t text[CMD_MAX];
+    mbstate_t state={0};
+    size_t count=0;
+    while (*name && count < CMD_MAX - 1) {
+        size_t bytes=mbrtowc(&text[count], name, MB_CUR_MAX, &state);
+        // Invalid filename bytes and control characters get a display-only placeholder.
+        if (bytes == (size_t)-1 || bytes == (size_t)-2) {
+            memset(&state, 0, sizeof(state));
+            text[count]=L'?';
+            bytes=1;
+        }
+        if (wcwidth(text[count]) < 0) text[count]=L'?';
+        name+=bytes;
+        count++;
+    }
+    text[count]=L'\0';
+    if (wcswidth(text, count) > width) {
+        size_t left=0, right=count;
+        int left_width=0, right_width=0, half=(width - 1) / 2;
+        while (left < count && left_width + wcwidth(text[left]) <= half)
+            left_width+=wcwidth(text[left++]);
+        while (right > left && right_width + wcwidth(text[right - 1]) <= width - 1 - half)
+            right_width+=wcwidth(text[--right]);
+        // Do not attach a suffix's orphaned combining marks to the truncation marker.
+        while (right < count && wcwidth(text[right]) == 0) right++;
+        memmove(text + left + 1, text + right, (count - right + 1) * sizeof(*text));
+        text[left]=L'~';
+    }
+    wcstombs(result, text, CMD_MAX - 1);
+    result[CMD_MAX - 1]='\0';
 }
 
 // Draw complete UTF-8 cells in a column viewport without wrapping or emitting controls.
@@ -128,6 +172,33 @@ void refresh_screen(int cursor_visibility)
     if (is_wintouched(newscr)) curs_set(0);
     doupdate();
     curs_set(cursor_visibility);
+}
+
+// Draw the inset frame shared by confirmation and progress dialogs.
+void draw_dialog_frame(WINDOW *win, int separator)
+{
+    int width=getmaxx(win), height=getmaxy(win);
+    mvwvline(win, 2, 1, '|', height-4);
+    mvwvline(win, 2, width-2, '|', height-4);
+    int rows[]={1, separator, height-2};
+    for (int i=0; i < 3; i++)
+    {
+        mvwhline(win, rows[i], 2, '-', width-4);
+        mvwaddch(win, rows[i], 1, '+');
+        mvwaddch(win, rows[i], width-2, '+');
+    }
+}
+
+// Draw newline-separated dialog text, shortening each line to the available columns.
+void draw_dialog_text(WINDOW *win, int row, const char *text)
+{
+    char *copy=strdup(text), *line=strtok(copy, "\n");
+    while (line)
+    {
+        mvwaddstr(win, row++, 3, SHORTEN(line, getmaxx(win)-6));
+        line=strtok(NULL, "\n");
+    }
+    free(copy);
 }
 
 // Keep function keys in their usual slots and clip labels on narrow terminals.
@@ -185,33 +256,13 @@ void draw_windows(int maxY, int maxX) {
     // Stage the background before the panel windows.
     wnoutrefresh(stdscr);
 
-    // Calculate window dimensions
-    int winHeight = maxY - 2;
-    int winWidth1 = maxX / 2;
-    int winWidth2 = maxX / 2;
-
-    // Adjust for odd COLS
-    if (maxX % 2 != 0) {
-        winWidth2 += 1;
+    WINDOW **windows[]={&win1, &win2};
+    for (int i=0; i < 2; i++) {
+        int x=i*maxX/2, width=(i+1)*maxX/2-x;
+        delwin(*windows[i]);
+        *windows[i]=newwin(maxY-2, width, 0, x);
+        wbkgd(*windows[i], COLOR_PAIR(COLOR_WHITE_ON_BLUE));
+        wborder(*windows[i], '|', '|', '-', '-', '+', '+', '+', '+');
+        wnoutrefresh(*windows[i]);
     }
-
-    // Delete old windows
-    delwin(win1);
-    delwin(win2);
-
-    // Create new windows
-    win1 = newwin(winHeight, winWidth1, 0, 0);
-    win2 = newwin(winHeight, winWidth2, 0, winWidth1);
-
-    // Apply the color pair to the window
-    wbkgd(win1, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-    wbkgd(win2, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-
-    // Add borders to windows using wborder()
-    wborder(win1, '|', '|', '-', '-', '+', '+', '+', '+');
-    wborder(win2, '|', '|', '-', '-', '+', '+', '+', '+');
-
-    // Stage borders for the next complete screen update.
-    wnoutrefresh(win1);
-    wnoutrefresh(win2);
 }

@@ -88,94 +88,42 @@ int panel_mouse(MEVENT *event, PanelMouse *mouse)
     return action;
 }
 
-// Shorten by terminal columns, keeping multibyte characters and their accents intact.
-void shorten(char *name, int width, char *result) {
-    result[0]='\0';
-    if (width <= 0) return;
-    wchar_t text[CMD_MAX];
-    mbstate_t state={0};
-    size_t count=0;
-    while (*name && count < CMD_MAX - 1) {
-        size_t bytes=mbrtowc(&text[count], name, MB_CUR_MAX, &state);
-        // Invalid filename bytes and control characters get a display-only placeholder.
-        if (bytes == (size_t)-1 || bytes == (size_t)-2) {
-            memset(&state, 0, sizeof(state));
-            text[count]=L'?';
-            bytes=1;
-        }
-        if (wcwidth(text[count]) < 0) text[count]=L'?';
-        name+=bytes;
-        count++;
-    }
-    text[count]=L'\0';
-    if (wcswidth(text, count) > width) {
-        size_t left=0, right=count;
-        int left_width=0, right_width=0, half=(width - 1) / 2;
-        while (left < count && left_width + wcwidth(text[left]) <= half)
-            left_width+=wcwidth(text[left++]);
-        while (right > left && right_width + wcwidth(text[right - 1]) <= width - 1 - half)
-            right_width+=wcwidth(text[--right]);
-        // Do not attach a suffix's orphaned combining marks to the truncation marker.
-        while (right < count && wcwidth(text[right]) == 0) right++;
-        memmove(text + left + 1, text + right, (count - right + 1) * sizeof(*text));
-        text[left]=L'~';
-    }
-    wcstombs(result, text, CMD_MAX - 1);
-    result[CMD_MAX - 1]='\0';
-}
-
 int file_has_extension(const char *filename, const char *extensions[]) {
-    for (int i = 0; extensions[i]; i++) {
-        if (strcmp(filename + strlen(filename) - strlen(extensions[i]), extensions[i]) == 0) {
-            return 1;
-        }
+    size_t length=strlen(filename);
+    for (int i=0; extensions[i]; i++) {
+        size_t suffix=strlen(extensions[i]);
+        if (length >= suffix && !strcmp(filename+length-suffix, extensions[i])) return 1;
     }
     return 0;
 }
 
 
+// Group decimal digits directly in the caller's buffer, then reverse them in place.
 int format_number(off_t num, char *str) {
-    static char buf[20]; // Assuming number won't exceed 20 characters with commas
-    char rev[20], *p = rev;
-    int count = 0;
-
+    int length=0, digits=0;
     do {
-        if (count++ % 3 == 0 && count > 1) *p++ = ',';
-        *p++ = '0' + num % 10;
-        num /= 10;
+        if (digits && digits%3 == 0) str[length++]=',';
+        str[length++]='0'+num%10;
+        num/=10;
+        digits++;
     } while (num);
-
-    *p = '\0';
-    for (int i = 0, j = strlen(rev) - 1; j >= 0; j--, i++) {
-        buf[i] = rev[j];
+    str[length]='\0';
+    for (int i=0; i < length/2; i++) {
+        char digit=str[i];
+        str[i]=str[length-i-1];
+        str[length-i-1]=digit;
     }
-    buf[strlen(rev)] = '\0';
-    sprintf(str, "%s", buf);
     return 0;
 }
 
-
+// Scale only as far as needed to fit the panel, using the existing binary units.
 void format_size_with_units(off_t size, char *size_str, size_t len, int maxlen) {
-    snprintf(size_str, len, "%lld", size);
-
-    if (strlen(size_str) > maxlen) {
-        size /= 1024;
-        snprintf(size_str, len, "%lldK", size);
-        if (strlen(size_str) > maxlen) {
-            size /= 1024;
-            snprintf(size_str, len, "%lldM", size);
-            if (strlen(size_str) > maxlen) {
-                size /= 1024;
-                snprintf(size_str, len, "%lldG", size);
-                if (strlen(size_str) > maxlen) {
-                    size /= 1024;
-                    snprintf(size_str, len, "%lldT", size);
-                }
-            }
-        }
+    snprintf(size_str, len, "%lld", (long long)size);
+    for (int unit=0; unit < 4 && strlen(size_str) > maxlen; unit++) {
+        size/=1024;
+        snprintf(size_str, len, "%lld%c", (long long)size, "KMGT"[unit]);
     }
 }
-
 
 
 void update_panel(WINDOW *win, PanelProp *panel) {
@@ -319,7 +267,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     }
 
     // path goes to window title
-    if ((win == win1 && active_panel == &left_panel) || (win == win2 && active_panel == &right_panel)) {
+    if (panel == active_panel) {
        wattron(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
     } else {
        wattron(win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
@@ -358,7 +306,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // print selected
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
     wattron(win, A_BOLD);
-    char num[20];
+    char num[32];
     format_number(panel->bytes_selected_files, num);
     sprintf(info," %s B in %d file%s ", num, panel->num_selected_files, panel->num_selected_files == 1 ? "" : "s");
     if (panel->num_selected_files > 0) mvwprintw(win, height - 3, width - strlen(info) - 3, "%s", info);

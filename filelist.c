@@ -14,30 +14,22 @@ int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order) {
         return a->is_dir ? -1 : 1;
     }
 
-    switch (sort_order % 6) {  // 6 because there are 6 basic sort types
+    int order=sort_order%6; // Name, size, time; then the same three in reverse.
+    switch (order%3) {
         case SORT_BY_NAME_ASC:
-        case SORT_BY_NAME_DESC:
             // Keep dot-prefixed names first in both sort directions.
             if ((a->name[0] == '.') != (b->name[0] == '.')) return a->name[0] == '.' ? -1 : 1;
             result = strcmp(a->name, b->name);
             break;
         case SORT_BY_SIZE_ASC:
-        case SORT_BY_SIZE_DESC:
             result = (a->size > b->size) - (a->size < b->size);
             break;
         case SORT_BY_TIME_ASC:
-        case SORT_BY_TIME_DESC:
             result = (a->mtime > b->mtime) - (a->mtime < b->mtime);
             break;
     }
 
-    // DESC sort? revert result
-    if (sort_order == SORT_BY_NAME_DESC || sort_order == SORT_BY_SIZE_DESC || sort_order == SORT_BY_TIME_DESC ||
-        sort_order == SORT_BY_NAME_DIRSFIRST_DESC || sort_order == SORT_BY_SIZE_DIRSFIRST_DESC || sort_order == SORT_BY_TIME_DIRSFIRST_DESC) {
-        result = -result;
-    }
-
-    return result;
+    return order >= 3 ? -result : result;
 }
 
 
@@ -48,17 +40,11 @@ void sort_file_nodes(FileNode **head_ref, SortOrders sort_order) {
     while (current != NULL) {
         FileNode *next = current->next;
 
-        if (sorted == NULL || compare_nodes(current, sorted, sort_order) <= 0) {
-            current->next = sorted;
-            sorted = current;
-        } else {
-            FileNode *temp = sorted;
-            while (temp->next != NULL && compare_nodes(current, temp->next, sort_order) > 0) {
-                temp = temp->next;
-            }
-            current->next = temp->next;
-            temp->next = current;
-        }
+        FileNode **position=&sorted;
+        while (*position && compare_nodes(current, *position, sort_order) > 0)
+            position=&(*position)->next;
+        current->next=*position;
+        *position=current;
 
         current = next;
     }
@@ -95,7 +81,6 @@ int update_panel_files(PanelProp *panel) {
         FileNode *new_node = (FileNode*) calloc(1,sizeof(FileNode));
 
         panel->files_count++;
-        new_node->next = NULL;
         new_node->name = strdup(entry->d_name);
 
         new_node->mtime = file_stat.st_mtime;
@@ -105,12 +90,9 @@ int update_panel_files(PanelProp *panel) {
         new_node->is_dir = S_ISDIR(file_stat.st_mode);
         new_node->is_executable = (file_stat.st_mode & S_IXUSR) || (file_stat.st_mode & S_IXGRP) || (file_stat.st_mode & S_IXOTH);
         new_node->is_link = S_ISLNK(file_stat.st_mode);
-        new_node->is_link_broken = 0;
-        new_node->is_link_to_dir = 0;
         new_node->is_device = S_ISBLK(file_stat.st_mode) || S_ISCHR(file_stat.st_mode);
 
         if (new_node->is_link) {
-            new_node->link_target = NULL;
             char target[CMD_MAX];
             ssize_t len = readlink(full_path, target, sizeof(target) - 1);
             if (len != -1) {
@@ -131,9 +113,7 @@ int update_panel_files(PanelProp *panel) {
         FileNode *old_node = original_head;
         while (old_node != NULL) {
             if (old_node->is_selected && strcmp(new_node->name, old_node->name) == 0) {
-                new_node->is_selected = true;
-                panel->num_selected_files++;
-                if (!new_node->is_dir) panel->bytes_selected_files+=new_node->size;
+                select_file(panel, new_node, 1);
                 break;
             }
             old_node = old_node->next;
@@ -174,9 +154,7 @@ void dive_into_directory(FileNode *current) {
        strncpy(active_panel->file_under_cursor, last_slash + 1, CMD_MAX - 1);
 
        // Go back to upper dir
-       last_slash = strrchr(active_panel->path, '/');
-       int is_root = (last_slash == active_panel->path);
-       memset(last_slash + is_root, 0, strlen(last_slash));
+       last_slash[last_slash == active_panel->path]='\0';
    } else {
        // Dive into the selected directory
        if (strlen(active_panel->path) > 1) strcat(active_panel->path, "/");

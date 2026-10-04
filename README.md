@@ -91,5 +91,7 @@ encodings are not converted automatically. Complex joined emoji sequences are
 not treated as a single character. Panel prefix search remains case-sensitive.
 
 For a small, fully static 32-bit x86 binary built with musl and ncurses, run
-`sh static/build.sh`. The script downloads its dependencies, builds and packs
-`static/mc`, and cleans up afterwards. See [static build instructions](static/README.md).
+`sh static/build.sh`. The script uses the source archives in `static/sources`,
+downloads any missing dependencies, builds and packs `static/mc`, and saves
+linking and size reports. Temporary build files are cleaned up afterwards.
+See [static build instructions](static/README.md).

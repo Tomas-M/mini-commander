@@ -6,7 +6,7 @@ if [ "$(uname -s)" != Linux ]; then
     echo "Run this script on Linux (or inside WSL)." >&2
     exit 1
 fi
-for tool in make curl tar gzip xz sha256sum awk sed; do
+for tool in make curl tar gzip xz sha256sum awk sed patch; do
     command -v "$tool" >/dev/null || { echo "Missing build tool: $tool" >&2; exit 1; }
 done
 
@@ -35,10 +35,14 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 cd "$build_dir"
 
-# Verify pinned upstream archives before unpacking or executing their contents.
+# Prefer local upstream archives and verify them before unpacking or execution.
 download() {
     archive=${1##*/}
-    curl --fail --location --retry 3 --connect-timeout 30 --output "$archive" "$1"
+    if [ -f "$script_dir/sources/$archive" ]; then
+        archive="$script_dir/sources/$archive"
+    else
+        curl --fail --location --retry 3 --connect-timeout 30 --output "$archive" "$1"
+    fi
     printf '%s  %s\n' "$2" "$archive" | sha256sum -c -
     tar -xf "$archive"
 }
@@ -84,6 +88,8 @@ echo "Building 32-bit x86 musl $musl_version..."
 
 export CC="$prefix/bin/musl-gcc"
 ncurses_source="$build_dir/ncurses-$ncurses_version"
+# These two integer-only parsers otherwise pull in musl's floating-point scanf code.
+patch -d "$ncurses_source" -p1 <"$script_dir/ncurses-integer-colors.patch"
 mkdir tools curses
 # Build matching tic/infocmp locally so embedded terminal entries need no host ncurses tools.
 echo "Building terminal description tools..."
@@ -99,6 +105,8 @@ echo "Building terminal description tools..."
 ) >>build.log 2>&1
 
 echo "Building minimal ncurses $ncurses_version with embedded terminal descriptions..."
+# Smaller packed code with this compiler; musl still requires an i686-compatible CPU.
+export CFLAGS="$CFLAGS -march=i386 -flto"
 (
     cd curses
     # Install headers and the ncurses.h alias directly in our private prefix/include.
@@ -107,9 +115,10 @@ echo "Building minimal ncurses $ncurses_version with embedded terminal descripti
         --without-ada --without-tests --without-manpages --without-progs \
         --without-gpm --without-dlsym \
         --enable-widec --disable-database --disable-db-install \
+        --disable-sp-funcs --disable-opaque-curses --disable-ext-colors --disable-ext-putwin \
         --with-fallbacks=linux,vt100,xterm,xterm-256color,screen,screen-256color,tmux,tmux-256color \
         --with-tic-path="$build_dir/tools/progs/tic" \
-        --with-infocmp-path="$build_dir/tools/progs/infocmp"
+        --with-infocmp-path="$build_dir/tools/progs/infocmp" AR=gcc-ar RANLIB=gcc-ranlib
     make -j "$jobs" -C include
     make -j "$jobs" -C ncurses
     make -C include install
@@ -118,15 +127,22 @@ echo "Building minimal ncurses $ncurses_version with embedded terminal descripti
 
 echo "Linking 32-bit x86 Mini Commander..."
 # Use the normal build's source files, bypassing its optional host UPX step.
-# Disabling inlining here gives a smaller packed executable with this toolchain.
+# This static toolchain has no linker plugin to read LTO from archives. Direct
+# objects let GCC optimize ncurses together with the application and remove unused code.
+mkdir ncurses-objects
+(cd ncurses-objects && ar x "$prefix/lib/libncursesw.a")
 (
     cd "$project_dir"
-    "$CC" $CFLAGS -std=gnu99 -flto -fno-inline -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE \
+    "$CC" $CFLAGS -std=gnu99 -fwhole-program -D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE \
         -D_FILE_OFFSET_BITS=64 -I"$prefix/include" \
         mc.c cmd.c operations.c dialog.c filelist.c init.c panel.c ui.c view_edit.c progress.c \
-        "$prefix/lib/libncursesw.a" $LDFLAGS -o "$build_dir/mc"
+        "$build_dir"/ncurses-objects/*.o $LDFLAGS \
+        "-Wl,-Map=$build_dir/mc.map,--cref" -o "$build_dir/mc"
 ) >>build.log 2>&1
+# Keep size diagnostics outside the stripped and compressed executable.
+nm --defined-only -S --size-sort --radix=d mc >mc.symbols
 strip --strip-all mc
+size -A -d mc >mc.sections
 
 # Check the ELF before packing: a static executable has neither a loader nor shared dependencies.
 readelf -l mc >elf.txt
@@ -138,10 +154,11 @@ fi
 check_binary
 echo "Unpacked size: $(wc -c < mc) bytes"
 if [ "$pack" = 1 ]; then
-    "./upx-$upx_version-${upx_arch}_linux/upx" --best --lzma mc
+    "./upx-$upx_version-${upx_arch}_linux/upx" --ultra-brute mc
     "./upx-$upx_version-${upx_arch}_linux/upx" -t mc
     check_binary
 fi
 chmod 755 mc
+mv -f mc.map mc.symbols mc.sections "$script_dir/"
 mv -f mc "$script_dir/mc"
 echo "Built $script_dir/mc ($(wc -c < "$script_dir/mc") bytes)"

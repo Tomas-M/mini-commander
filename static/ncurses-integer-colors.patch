@@ -1,0 +1,43 @@
+--- a/ncurses/base/lib_set_term.c
++++ b/ncurses/base/lib_set_term.c
+@@ -487,9 +487,15 @@
+      * runtime:
+      */
+     if ((env = getenv("NCURSES_ASSUMED_COLORS")) != NULL) {
+-	int fg, bg;
+-	char sep1, sep2;
+-	int count = sscanf(env, "%d%c%d%c", &fg, &sep1, &bg, &sep2);
++	/* Only the two integer colors are used; avoid the general scanf parser. */
++	char *end;
++	int fg = (int) strtol(env, &end, 10), bg = 0;
++	int count = (end != env);
++	if (count && *end) {
++	    env = end + 1;
++	    bg = (int) strtol(env, &end, 10);
++	    if (end != env) count = 3;
++	}
+ 	if (count >= 1) {
+ 	    sp->_default_fg = ((fg >= 0 && fg < MaxColors) ? fg : COLOR_DEFAULT);
+ 	    if (count >= 3) {
+--- a/ncurses/base/lib_color.c
++++ b/ncurses/base/lib_color.c
+@@ -278,7 +278,18 @@
+ 	    int green = n;
+ 	    int blue = width - (2 * n);
+ 
+-	    switch (sscanf(s, "%d/%d/%d", &red, &green, &blue)) {
++	    /* Parse the integer channel widths without pulling in floating-point scanf. */
++	    int *channels[] = { &red, &green, &blue };
++	    int count = 0;
++	    while (count < 3) {
++		char *end;
++		long value = strtol(s, &end, 10);
++		if (end == s) break;
++		*channels[count++] = (int) value;
++		if (*end != '/') break;
++		s = end + 1;
++	    }
++	    switch (count) {
+ 	    default:
+ 		blue = width - (2 * n);
+ 		/* FALLTHRU */

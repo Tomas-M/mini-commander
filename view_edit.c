@@ -402,10 +402,6 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         column+=width;
         offset+=bytes;
     }
-    // Make a selected newline visible, including on otherwise empty lines.
-    if (line->next && mark_start <= line->line_length && mark_end > line->line_length)
-        if (column >= current_col && column < current_col+max_x)
-            mvwaddch(win, row, column-current_col, ' '|COLOR_PAIR(COLOR_BLACK_ON_CYAN));
     free(text);
 }
 
@@ -797,7 +793,12 @@ int view_edit_file(char *filename, int editor_mode) {
             {
                 num_bytes+=insert_length-(edit_end-edit_start);
                 position=edit_start+insert_length;
-                if (input == KEY_F(5)) { mark_start=selected_start; mark_end=selected_end; }
+                if (input == KEY_F(5))
+                {
+                    position=edit_start;
+                    mark_start=selected_start;
+                    mark_end=selected_end;
+                }
                 mark_start=move_mark(mark_start, edit_start, edit_end, insert_length, 1);
                 mark_end=move_mark(mark_end, edit_start, edit_end, insert_length, 0);
                 if (input == KEY_F(6))
@@ -806,7 +807,7 @@ int view_edit_file(char *filename, int editor_mode) {
                     mark_start=edit_start;
                     if (seek+cursor_byte > selected_end) mark_start=edit_end-length;
                     mark_end=mark_start+length;
-                    position=mark_end;
+                    position=mark_start;
                 }
                 if (input == KEY_F(8)) mark_start=mark_end=-1;
                 // An edit may join a base character to existing combining marks.

@@ -140,7 +140,7 @@ static void check_ranges(void)
     free_file_lines(lines);
 }
 
-// Selection must override syntax/control colors and include a selected newline.
+// Selection overrides syntax/control colors without drawing a space for the newline.
 static void check_rendering(void)
 {
     file_lines next={"", 0, NULL}, line={"int\t\001中é", strlen("int\t\001中é"), &next};
@@ -151,7 +151,7 @@ static void check_rendering(void)
         init_screen();
         werase(win);
         display_line(win, &line, 20, 0, 1, SYNTAX_C, 1, line.line_length+1);
-        for (int column=1; column <= 8; column++)
+        for (int column=1; column < 8; column++)
         {
             cchar_t cell;
             wchar_t chars[CCHARW_MAX];
@@ -166,6 +166,7 @@ static void check_rendering(void)
             assert(foreground == COLOR_BLACK && background == (monochrome ? COLOR_WHITE : COLOR_CYAN));
         }
         assert(PAIR_NUMBER(mvwinch(win, 0, 0)) != COLOR_BLACK_ON_CYAN);
+        assert(PAIR_NUMBER(mvwinch(win, 0, 8)) != COLOR_BLACK_ON_CYAN);
         werase(win);
         display_line(win, &line, 3, 5, 1, SYNTAX_C, 5, line.line_length);
         cchar_t cell;

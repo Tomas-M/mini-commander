@@ -47,13 +47,8 @@ download() {
     tar -xf "$archive"
 }
 
-# Verify the target architecture before running both unpacked and packed binaries.
+# Verify that both unpacked and packed binaries can run.
 check_binary() {
-    readelf -h mc >header.txt
-    if ! grep -Eq 'Class:[[:space:]]+ELF32' header.txt || ! grep -Eq 'Machine:[[:space:]]+Intel 80386' header.txt; then
-        echo "The resulting binary is not 32-bit x86." >&2
-        exit 1
-    fi
     # The application's --version prints a version but exits with status 1.
     ./mc --version >version.txt 2>&1 || test "$?" -eq 1
     grep '^Version ' version.txt
@@ -145,6 +140,11 @@ strip --strip-all mc
 size -A -d mc >mc.sections
 
 # Check the ELF before packing: a static executable has neither a loader nor shared dependencies.
+readelf -h mc >header.txt
+if ! grep -Eq 'Class:[[:space:]]+ELF32' header.txt || ! grep -Eq 'Machine:[[:space:]]+Intel 80386' header.txt; then
+    echo "The resulting binary is not 32-bit x86." >&2
+    exit 1
+fi
 readelf -l mc >elf.txt
 readelf -d mc >>elf.txt
 if grep -Eq 'INTERP|\(NEEDED\)' elf.txt; then

@@ -441,7 +441,7 @@ int view_edit_file(char *filename, int editor_mode) {
     off_t mark_start=-1, mark_end=-1;
     off_t drag_start=-1;
     mmask_t saved_mousemask=0;
-    int saved_mouseinterval=0;
+    int saved_mouseinterval=0, mouse_tracking=0;
     char find_str[CMD_MAX] = {0};
     const char *editor_buttons[]={"Save", "Mark", "", "Copy", "Move", "Search", "Delete", "", "Quit"};
     const char *viewer_buttons[]={"", "Quit", "", "", "", "Search", "", "", "Quit"};
@@ -483,6 +483,10 @@ int view_edit_file(char *filename, int editor_mode) {
         // Receive press, drag and release separately; restore panel mouse behavior on exit.
         mousemask(BUTTON1_PRESSED|BUTTON1_RELEASED|BUTTON1_CLICKED|REPORT_MOUSE_POSITION, &saved_mousemask);
         saved_mouseinterval=mouseinterval(0);
+        // Standard xterm profiles enable clicks only; request motion while a button is held.
+        const char *mouse_prefix=tigetstr("kmous");
+        mouse_tracking=mouse_prefix && (!strcmp(mouse_prefix, "\033[M") || !strcmp(mouse_prefix, "\033[<"));
+        if (mouse_tracking) { fputs("\033[?1002h", stdout); fflush(stdout); }
     }
 
     // Byte positions identify edits; terminal columns are derived only for display/navigation.
@@ -889,6 +893,7 @@ int view_edit_file(char *filename, int editor_mode) {
 close_editor:
     if (editor_mode)
     {
+        if (mouse_tracking) { fputs("\033[?1002l", stdout); fflush(stdout); }
         mousemask(saved_mousemask, NULL);
         mouseinterval(saved_mouseinterval);
     }

@@ -1,13 +1,15 @@
 // Run with: gcc -Os -ffunction-sections -fdata-sections tests/operations.c dialog.c panel.c -Wl,--gc-sections -lncursesw -o /tmp/mc-operations-test && /tmp/mc-operations-test
 #include "../includes.h"
 #include <assert.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #define show_dialog test_dialog
 #define update_progress_dialog_delta test_progress
 #include "../operations.c"
 #undef show_dialog
 #undef update_progress_dialog_delta
 
-static int answers[8], answer_count, answer_index, abort_progress;
+static int answers[8], answer_count, answer_index, abort_progress, abort_copy;
 static const char *repair_directory;
 
 // Supply explicit choices, optionally repairing a failed operation before Retry.
@@ -19,7 +21,8 @@ int test_dialog(char *title, char *buttons[], int selected, char *prompt, int da
 }
 
 // Keep filesystem tests independent of ncurses and allow an immediate abort.
-int test_progress(char *title, int current, int total, char *info) { return abort_progress ? 2 : -1; }
+int test_progress(char *title, int current, int total, char *info)
+{ return abort_progress || (abort_copy && title && !strncmp(title, "Copying", 7)) ? 2 : -1; }
 
 // Prepare one answer; any unexpected second prompt fails the test.
 static void answer(int button)
@@ -47,6 +50,63 @@ static void expect(const char *path, const char *text)
     assert(read(fd, buffer, sizeof(buffer)) == (ssize_t)strlen(text));
     assert(!memcmp(buffer, text, strlen(text)));
     close(fd);
+}
+
+static void cross_filesystem(void)
+{
+    char destination[]="/dev/shm/mc-move-XXXXXX", target[CMD_MAX], path[CMD_MAX];
+    assert(mkdtemp(destination));
+    struct stat here, there;
+    assert(stat(".", &here) == 0 && stat(destination, &there) == 0 && here.st_dev != there.st_dev);
+    snprintf(target, sizeof(target), "%s/file", destination);
+    put("moving-file", "moved bytes");
+    struct timespec times[]={{1234567890, 123}, {1234567891, 456}};
+    assert(chmod("moving-file", 0751) == 0 && utimensat(AT_FDCWD, "moving-file", times, 0) == 0);
+    operationContext context={0};
+    answer_count=answer_index=0;
+    assert(recursive_operation("moving-file", target, &context, move_operation) == OPERATION_OK);
+    assert(!file_exists("moving-file")); expect(target, "moved bytes");
+    assert(stat(target, &there) == 0 && (there.st_mode & 07777) == 0751);
+    assert(there.st_mtim.tv_sec == times[1].tv_sec && there.st_mtim.tv_nsec == times[1].tv_nsec);
+    assert(mkdir("moving-tree", 0700) == 0 && mkdir("moving-tree/sub", 0700) == 0);
+    put("moving-tree/sub/file", "tree bytes");
+    assert(symlink("sub/file", "moving-tree/link") == 0);
+    assert(symlink("missing", "moving-tree/broken") == 0);
+    assert(mkfifo("moving-tree/fifo", 0640) == 0);
+    assert(chmod("moving-tree/sub", 0500) == 0);
+    snprintf(target, sizeof(target), "%s/tree", destination);
+    context=(operationContext){0};
+    assert(recursive_operation("moving-tree", target, &context, move_operation) == OPERATION_OK);
+    assert(!file_exists("moving-tree"));
+    snprintf(path, sizeof(path), "%s/sub/file", target); expect(path, "tree bytes");
+    snprintf(path, sizeof(path), "%s/sub", target); assert(stat(path, &there) == 0 && (there.st_mode & 0777) == 0500);
+    snprintf(path, sizeof(path), "%s/broken", target); assert(lstat(path, &there) == 0 && S_ISLNK(there.st_mode));
+    snprintf(path, sizeof(path), "%s/fifo", target); assert(lstat(path, &there) == 0 && S_ISFIFO(there.st_mode));
+    snprintf(target, sizeof(target), "%s/file", destination);
+    put("declined", "source stays");
+    answer(2); context=(operationContext){0};
+    assert(recursive_operation("declined", target, &context, move_operation) == OPERATION_SKIP);
+    expect("declined", "source stays"); expect(target, "moved bytes");
+    assert(context.keep_item_selected);
+    snprintf(target, sizeof(target), "%s/aborted", destination);
+    abort_copy=1; context=(operationContext){0};
+    assert(recursive_operation("declined", target, &context, move_operation) == OPERATION_ABORT);
+    assert(context.abort); expect("declined", "source stays");
+    abort_copy=0;
+    assert(mkdir("failed-tree", 0700) == 0);
+    put("failed-tree/file", "keep entire source");
+    int fd=socket(AF_UNIX, SOCK_STREAM, 0);
+    struct sockaddr_un address={.sun_family=AF_UNIX};
+    strcpy(address.sun_path, "failed-tree/socket");
+    assert(fd >= 0 && bind(fd, (struct sockaddr *)&address, sizeof(address)) == 0);
+    snprintf(target, sizeof(target), "%s/failed", destination);
+    answer(1); context=(operationContext){0};
+    assert(recursive_operation("failed-tree", target, &context, move_operation) == OPERATION_SKIP);
+    assert(context.keep_item_selected && file_exists("failed-tree/socket"));
+    expect("failed-tree/file", "keep entire source");
+    close(fd);
+    context=(operationContext){.confirm_all_yes=1};
+    assert(recursive_operation(destination, "", &context, delete_operation) == OPERATION_OK);
 }
 
 // Exercise every overwrite choice through copy, symlink copy and rename.
@@ -120,6 +180,7 @@ int main(void)
     expect("copied/sub/file", "data");
     context=(operationContext){.confirm_all_yes=1};
     assert(recursive_operation("copied", "", &context, delete_operation) == OPERATION_OK && !file_exists("copied"));
+    cross_filesystem();
     abort_progress=1;
     OperationFunc operations[]={copy_operation, move_operation, delete_operation, countstats_operation};
     for (int i=0; i < 4; i++)

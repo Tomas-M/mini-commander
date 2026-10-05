@@ -46,12 +46,27 @@ slax.org
 - **Editor save protection:** prompts before closing unsaved changes, preserves
   file ownership and permissions, and edits through symbolic links while keeping
   the links intact.
+- **Editor undo:** `Ctrl+U` restores the previous edit, cursor movement, selection,
+  or viewport position. History is kept in memory without a fixed limit and is
+  released when the editor closes. Movement stores only a small state record;
+  edits retain the bytes they replace. Undoing a saved edit marks the file modified.
 - **Two independent panels:** switch with `Tab`. Each panel has its own sorting
   options (`F2`): name, size, or modification time, in either direction, with
   directories first or mixed with files.
 - **Batch file operations:** mark items with `Insert`, then copy (`F5`),
-  move/rename within the same filesystem (`F6`), or delete (`F8`). Copying and
+  move/rename (`F6`), or delete (`F8`). Copying and
   deleting directories includes their contents.
+  With an empty command line, `+` selects a mask, `-` unselects a mask, and `*`
+  inverts the selection. The default mask `*` selects or clears all items except
+  `..`, including directories and dotfiles. Masks support only `*` and `?`, where
+  `?` matches one displayed UTF-8 character. Matching is case-sensitive.
+- **Moves across filesystems:** `F6` copies when a rename cannot cross a mount
+  boundary, preserves ownership, permissions and timestamps, and removes the
+  source only after the complete copy succeeds. Skipped, failed or aborted copies
+  leave the source intact. Symbolic links and FIFOs are preserved; hard-linked
+  files are copied independently.
+- **Stable panel positions:** refreshing preserves the file under each panel's
+  cursor and its scroll position. Sorting uses a stable merge sort for large lists.
 - **Create nested directories:** `F7` accepts a path such as `projects/demo/src`
   and creates missing parent directories too.
 - **Copy progress and controls:** see progress for the current file and the
@@ -75,13 +90,21 @@ slax.org
 | --- | --- |
 | `Alt+S`, then type | Jump to a filename by its prefix; press `Alt+S` again while searching for the next match. |
 | `Ctrl+Space` | Calculate the size of the directory under the cursor, including its contents (with no other items selected). |
-| `Alt+Enter` | Insert the filename under the cursor into the command line. |
-| `Alt+A` | Insert the active panel's directory path into the command line. |
+| `Alt+Enter` | Insert the filename under the cursor as a quoted shell word. |
+| `Alt+A` | Insert the active panel's directory path as a quoted shell word, with a trailing slash so a filename can be appended. |
+| `Alt+P` / `Alt+N` | Previous/next command in the in-memory history; returning past the newest entry restores the unfinished command. |
+| `Ctrl+U` | Swap the panels, including paths, sorting, selections, cursors and scroll positions; focus follows the original active panel. In the editor, undo. |
+| `Alt+G` | Go to a directory entered in a dialog; supports relative paths and `~`. |
 | `Shift+F5` / `Shift+F6` / `Shift+F7` | Copy, move/rename, or create a directory with the name under the cursor prefilled, without its path. Typing appends to the name; relative targets use the active directory. |
 | `Enter` | Execute a typed shell command in the active directory; with an empty command line, open a directory or run an executable. |
 | `Ctrl+O` | Temporarily reveal terminal output; press any key to return to the panels. |
 | `Ctrl+R` or `F9` | Refresh both panels. |
 | `Ctrl+L` | Redraw the screen. |
+
+The command line handles a simple `cd` itself: `cd`, `cd ~`, `cd ..`, and quoted
+or escaped paths change the active panel. Compound shell commands such as
+`cd /tmp && ls` execute in a child shell. Start with `./mc /source /destination`
+to open independent initial paths; a single path initializes the left panel.
 
 
 Usage:

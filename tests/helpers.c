@@ -31,6 +31,30 @@ int main(void)
         for (int i=0; i < 6; i++) { head=head->next; assert(head == &files[expected[order][i]]); }
         assert(!head->next);
     }
+    const struct { const char *pattern, *name; int match; } patterns[]={
+        {"*", "", 1}, {"", "", 1}, {"?", "", 0}, {"*.log", "a.log", 1},
+        {"*.log", "a.log.bak", 0}, {"a*?c", "abc", 1}, {"a*?c", "ac", 0},
+        {"*ab*ab", "ababab", 1}, {"a**b", "ab", 1}, {"*?*", "ž", 1},
+        {"?.c", "中.c", 1}, {"??.c", "中.c", 0}, {"?.c", "é.c", 1},
+        {"[ab]", "a", 0}, {"[ab]", "[ab]", 1}, {"*x", "ž中", 0}
+    };
+    for (size_t i=0; i < sizeof(patterns)/sizeof(*patterns); i++)
+        assert(filename_matches(patterns[i].pattern, patterns[i].name) == patterns[i].match);
+    FileNode *many=calloc(20000, sizeof(*many)), *head=many;
+    assert(many);
+    for (int i=0; i < 20000; i++)
+    {
+        many[i].name="same";
+        many[i].size=19999-i;
+        many[i].next=i < 19999 ? &many[i+1] : NULL;
+    }
+    sort_file_nodes(&head, SORT_BY_SIZE_ASC);
+    for (int i=19999; i >= 0; i--) { assert(head == &many[i]); head=head->next; }
+    head=&many[19999];
+    sort_file_nodes(&head, SORT_BY_NAME_ASC);
+    for (int i=19999; i >= 0; i--) { assert(head == &many[i]); head=head->next; }
+    assert(!head);
+    free(many);
     char number[32];
     const struct { off_t value; const char *expected; } numbers[]={
         {0,"0"}, {999,"999"}, {1000,"1,000"}, {1234567,"1,234,567"},
@@ -62,6 +86,6 @@ int main(void)
     }
     assert(text_column(text, strlen(text), 5) == 9);
     assert(text_offset(text, strlen(text), 2, 5) == 1);
-    puts("Helpers: all 12 sort modes, UTF-8 cells, short filenames and 64-bit size formatting passed.");
+    puts("Helpers: all sort modes, 20000 stable entries, wildcard masks, UTF-8 and size formatting passed.");
     return 0;
 }

@@ -20,6 +20,7 @@ int read_text_key(WINDOW *win, char *text, MEVENT *mouse);
 void shorten(char *name, int width, char *result);
 void update_panel(WINDOW *win, PanelProp *panel);
 void update_panel_cursor(void);
+void restore_panel_position(PanelProp *panel);
 void init_screen(void);
 void cleanup(void);
 void redraw_ui(void);

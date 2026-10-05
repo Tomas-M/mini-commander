@@ -34,22 +34,23 @@ int compare_nodes(FileNode *a, FileNode *b, SortOrders sort_order) {
 
 
 void sort_file_nodes(FileNode **head_ref, SortOrders sort_order) {
-    FileNode *sorted = NULL;
-    FileNode *current = *head_ref;
-
-    while (current != NULL) {
-        FileNode *next = current->next;
-
-        FileNode **position=&sorted;
-        while (*position && compare_nodes(current, *position, sort_order) > 0)
-            position=&(*position)->next;
-        current->next=*position;
-        *position=current;
-
-        current = next;
+    FileNode *left=*head_ref;
+    if (!left || !left->next) return;
+    FileNode *slow=left, *fast=left->next;
+    while (fast && fast->next) { slow=slow->next; fast=fast->next->next; }
+    FileNode *right=slow->next;
+    slow->next=NULL;
+    sort_file_nodes(&left, sort_order);
+    sort_file_nodes(&right, sort_order);
+    FileNode **tail=head_ref;
+    while (left && right)
+    {
+        FileNode **next=compare_nodes(left, right, sort_order) <= 0 ? &left : &right;
+        *tail=*next;
+        *next=(*next)->next;
+        tail=&(*tail)->next;
     }
-
-    *head_ref = sorted;
+    *tail=left ? left : right;
 }
 
 
@@ -60,15 +61,13 @@ int update_panel_files(PanelProp *panel) {
     struct stat link_stat;
     FileNode *head = NULL, *current = NULL, *original_head = NULL;
 
+    if ((dir = opendir(panel->path)) == NULL) return -1;
+    int had_selection=panel->num_selected_files;
     original_head = panel->files;
     panel->files = NULL;
     panel->files_count = 0;
     panel->num_selected_files = 0;
     panel->bytes_selected_files = 0;
-
-    if ((dir = opendir(panel->path)) == NULL) {
-        return 0;
-    }
 
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0) continue;
@@ -76,12 +75,14 @@ int update_panel_files(PanelProp *panel) {
 
         char full_path[CMD_MAX];
         snprintf(full_path, sizeof(full_path), "%s/%s", panel->path, entry->d_name);
-        lstat(full_path, &file_stat);
+        if (lstat(full_path, &file_stat) != 0) continue;
 
         FileNode *new_node = (FileNode*) calloc(1,sizeof(FileNode));
+        if (!new_node) break;
 
         panel->files_count++;
         new_node->name = strdup(entry->d_name);
+        if (!new_node->name) { free(new_node); panel->files_count--; break; }
 
         new_node->mtime = file_stat.st_mtime;
         new_node->size = file_stat.st_size;
@@ -110,7 +111,7 @@ int update_panel_files(PanelProp *panel) {
         if (new_node->is_link_to_dir) new_node->is_dir = 1;
 
         // Check if this file was selected in the original list
-        FileNode *old_node = original_head;
+        FileNode *old_node = had_selection ? original_head : NULL;
         while (old_node != NULL) {
             if (old_node->is_selected && strcmp(new_node->name, old_node->name) == 0) {
                 select_file(panel, new_node, 1);

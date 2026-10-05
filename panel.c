@@ -131,6 +131,14 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     int line = 1;  // Start from the second row to avoid the border
     int width = getmaxx(win) - 2;
     int height = getmaxy(win);
+    int visible=height > 5 ? height-5 : 1;
+    if (panel->selected_index < 0) panel->selected_index=0;
+    if (panel->selected_index >= panel->files_count)
+        panel->selected_index=panel->files_count ? panel->files_count-1 : 0;
+    if (panel->scroll_index > panel->selected_index) panel->scroll_index=panel->selected_index;
+    if (panel->selected_index >= panel->scroll_index+visible)
+        panel->scroll_index=panel->selected_index-visible+1;
+    if (panel->scroll_index < 0) panel->scroll_index=0;
     int name_width = width - 12 - 7 - 3;
     char info[CMD_MAX];
 
@@ -151,7 +159,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
     // Header of the file list
     wattron(win, A_BOLD);
     wattron(win, COLOR_PAIR(COLOR_YELLOW_ON_BLUE));
-    mvwprintw(win, line, 1, "%*s%s", ((width - 12 - 7 - 2) / 2) - (strlen("Name") / 2), "", "Name");
+    mvwprintw(win, line, 1, "%*s%s", ((width - 12 - 7 - 2) / 2) - ((int)strlen("Name") / 2), "", "Name");
     mvwprintw(win, line, width - 12 - 7 + 1, "%s", "Size");
     mvwprintw(win, line, width - 7 - 4, "%s", "Modify time");
     wattroff(win, A_BOLD);
@@ -316,30 +324,44 @@ void update_panel(WINDOW *win, PanelProp *panel) {
 }
 
 
-void update_panel_cursor() {
-   if (strlen(active_panel->file_under_cursor) >0) {
+void restore_panel_position(PanelProp *panel) {
+   if (panel->file_under_cursor[0]) {
        // Search for the last selected item and set it as the active item
-       FileNode *node = active_panel->files;
+       FileNode *node = panel->files;
        int index = 0;
        while (node) {
-           if (strcmp(node->name, active_panel->file_under_cursor) == 0) {
-               active_panel->selected_index = index;
+           if (strcmp(node->name, panel->file_under_cursor) == 0) {
+               panel->selected_index = index;
                break;
            }
            node = node->next;
            index++;
        }
-   } else {
-       active_panel->selected_index = 0;
    }
+   if (panel->selected_index >= panel->files_count)
+       panel->selected_index=panel->files_count ? panel->files_count-1 : 0;
+   if (panel->selected_index < 0) panel->selected_index=0;
+   if (panel->scroll_index > panel->selected_index) panel->scroll_index=panel->selected_index;
+}
+
+void update_panel_cursor() {
+   restore_panel_position(active_panel);
    active_panel->scroll_index = 0;
 }
 
 
 void update_files_in_both_panels() {
-    update_panel_files(&left_panel);
-    update_panel_files(&right_panel);
-    sort_file_nodes(&left_panel.files, left_panel.sort_order);
-    sort_file_nodes(&right_panel.files, right_panel.sort_order);
-    update_panel_cursor();
+    PanelProp *panels[]={&left_panel, &right_panel};
+    for (int i=0; i < 2; i++)
+    {
+        PanelProp *panel=panels[i];
+        FileNode *file=panel->files;
+        for (int index=0; file && index < panel->selected_index; index++) file=file->next;
+        if (file) snprintf(panel->file_under_cursor, CMD_MAX, "%s", file->name);
+        if (update_panel_files(panel) >= 0)
+        {
+            sort_file_nodes(&panel->files, panel->sort_order);
+            restore_panel_position(panel);
+        }
+    }
 }

@@ -198,11 +198,14 @@ int main(int argc, char *argv[]) {
                 } else {
                     show_errormsg(SPRINTF("Operation failed\n%s (%d)", strerror(err), err));
                 }
+                char created[CMD_MAX];
+                strcpy(created, active_panel->file_under_cursor);
                 update_files_in_both_panels();
+                if (!err) { strcpy(active_panel->file_under_cursor, created); restore_panel_position(active_panel); }
             }
         }
 
-        if (ch == KEY_F(8)) {
+        if (ch == KEY_F(8) && (current || active_panel->num_selected_files)) {
             if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
                 show_errormsg("Cannot operate on \"..\"");
                 continue;

@@ -91,8 +91,8 @@ slax.org
 | --- | --- |
 | `Alt+S`, then type | Jump to a filename by its prefix; press `Alt+S` again while searching for the next match. |
 | `Ctrl+Space` | Calculate the size of the directory under the cursor, including its contents (with no other items selected). |
-| `Alt+Enter` | Insert the filename under the cursor as a quoted shell word. |
-| `Alt+A` | Insert the active panel's directory path as a quoted shell word, with a trailing slash so a filename can be appended. |
+| `Alt+Enter` | Insert the filename under the cursor literally, followed by a space. |
+| `Alt+A` | Insert the active panel's directory path literally, with a trailing slash so a filename can be appended. |
 | `Alt+P` / `Alt+N` | Previous/next command in the in-memory history; returning past the newest entry restores the unfinished command. |
 | `Ctrl+U` | Swap the panels, including paths, sorting, selections, cursors and scroll positions; focus follows the original active panel. In the editor, undo. |
 | `Alt+G` | Go to a directory entered in a dialog; supports relative paths and `~`. |
@@ -101,6 +101,9 @@ slax.org
 | `Ctrl+O` | Temporarily reveal terminal output; press any key to return to the panels. |
 | `Ctrl+R` or `F9` | Refresh both panels. |
 | `Ctrl+L` | Redraw the screen. |
+
+Press `Alt+A`, then `Alt+Enter` to insert the full path of the file under the
+cursor. These shortcuts do not add quotes or escapes; add them manually when needed.
 
 The command line handles a simple `cd` itself: `cd`, `cd ~`, `cd ..`, and quoted
 or escaped paths change the active panel. Compound shell commands such as

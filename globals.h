@@ -36,7 +36,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 void show_errormsg(char * msg);
 void update_cmd(void);
 int execute_file(const char *filename);
-int insert_shell_path(const char *path, int directory);
+int insert_command_path(const char *path, int directory);
 void command_history_add(const char *command);
 void command_history_move(int direction);
 void command_history_free(void);

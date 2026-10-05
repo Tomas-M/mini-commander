@@ -61,28 +61,18 @@ void command_history_free(void)
     history_draft=NULL;
 }
 
-// Insert one shell word, escaping apostrophes without expanding shell syntax.
-int insert_shell_path(const char *path, int directory)
+// Insert path bytes literally; quoting and escaping are left to the user.
+int insert_command_path(const char *path, int directory)
 {
     size_t path_length=strlen(path);
     int slash=directory && (!path_length || path[path_length-1] != '/');
-    size_t length=path_length+2+(directory ? slash : 1);
-    for (const char *p=path; *p; p++) if (*p == '\'') length+=3;
-    int relative_option=!directory && path[0] == '-';
-    length+=relative_option ? 2 : 0;
+    size_t length=path_length+(directory ? slash : 1);
     if (length >= CMD_MAX-cmd_len) { errno=ENAMETOOLONG; return -1; }
-    char quoted[CMD_MAX], *out=quoted;
-    *out++='\'';
-    if (relative_option) { *out++='.'; *out++='/'; }
-    for (const char *p=path; *p; p++)
-        if (*p == '\'') { memcpy(out, "'\\''", 4); out+=4; }
-        else *out++=*p;
-    if (slash) *out++='/';
-    *out++='\'';
-    if (!directory) *out++=' ';
-    // A directory word has no trailing space so a filename can be appended.
+    // A directory has no trailing space so a filename can be appended.
     memmove(cmd+cursor_pos+length, cmd+cursor_pos, cmd_len-cursor_pos+1);
-    memcpy(cmd+cursor_pos, quoted, length);
+    memcpy(cmd+cursor_pos, path, path_length);
+    if (slash) cmd[cursor_pos+path_length]='/';
+    if (!directory) cmd[cursor_pos+path_length]=' ';
     cmd_len+=length;
     cursor_pos+=length;
     return 0;

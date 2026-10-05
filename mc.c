@@ -263,7 +263,7 @@ int main(int argc, char *argv[]) {
         if (ch == KEY_ALT_ENTER || ch == KEY_ALT_a)
         {
             const char *text=ch == KEY_ALT_ENTER ? active_panel->file_under_cursor : active_panel->path;
-            if (*text && insert_shell_path(text, ch == KEY_ALT_a) != 0)
+            if (*text && insert_command_path(text, ch == KEY_ALT_a) != 0)
                 show_errormsg("Command line is too long");
         }
 

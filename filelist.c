@@ -148,30 +148,51 @@ void free_file_nodes(FileNode *head) {
     }
 }
 
+int change_panel_directory(PanelProp *panel, const char *path)
+{
+    char input[CMD_MAX];
+    const char *base=path[0] == '~' && (!path[1] || path[1] == '/') ? getenv("HOME") : NULL;
+    int length=base ? snprintf(input, sizeof(input), "%s%s", base, path+1) :
+        snprintf(input, sizeof(input), "%s%s%s", path[0] == '/' ? "" : panel->path,
+            path[0] == '/' ? "" : "/", path);
+    if (length < 0 || length >= sizeof(input)) { errno=ENAMETOOLONG; return -1; }
+    char *resolved=realpath(input, NULL);
+    if (!resolved) return -1;
+    if (strlen(resolved) >= sizeof(panel->path)) { free(resolved); errno=ENAMETOOLONG; return -1; }
+    if (access(resolved, R_OK|X_OK) != 0) { int error=errno; free(resolved); errno=error; return -1; }
+    PanelProp next={.sort_order=panel->sort_order};
+    strcpy(next.path, resolved);
+    free(resolved);
+    if (update_panel_files(&next) < 0) return -1;
+    sort_file_nodes(&next.files, next.sort_order);
+    free_file_nodes(panel->files);
+    *panel=next;
+    return 0;
+}
+
 void dive_into_directory(FileNode *current) {
+   char target[CMD_MAX], name[CMD_MAX]="";
    if (strcmp(current->name, "..") == 0) {
        // Store the last directory name before going up
        char * last_slash = strrchr(active_panel->path, '/');
-       strncpy(active_panel->file_under_cursor, last_slash + 1, CMD_MAX - 1);
+       snprintf(name, sizeof(name), "%s", last_slash+1);
 
        // Go back to upper dir
-       last_slash[last_slash == active_panel->path]='\0';
+       snprintf(target, sizeof(target), "%s", active_panel->path);
+       char *slash=strrchr(target, '/');
+       slash[slash == target]='\0';
    } else {
        // Dive into the selected directory
-       if (strlen(active_panel->path) > 1) strcat(active_panel->path, "/");
-       strcat(active_panel->path, current->name);
-       active_panel->file_under_cursor[0] = '\0';
+       int length=snprintf(target, sizeof(target), "%s/%s", active_panel->path, current->name);
+       if (length >= sizeof(target)) { show_errormsg("Directory path is too long"); return; }
    }
 
-   free_file_nodes(active_panel->files);
-   active_panel->files = NULL;
-   active_panel->num_selected_files = 0;
-   active_panel->bytes_selected_files = 0;
-   active_panel->files_count = 0;
-
-   // Update the file list for the new directory
-   update_panel_files(active_panel);
-   sort_file_nodes(&active_panel->files, active_panel->sort_order);
-   update_panel_cursor();
+   if (change_panel_directory(active_panel, target) != 0)
+       show_errormsg(SPRINTF("Cannot open directory:\n%s\n%s", target, strerror(errno)));
+   else
+   {
+       strcpy(active_panel->file_under_cursor, name);
+       update_panel_cursor();
+   }
 }
 

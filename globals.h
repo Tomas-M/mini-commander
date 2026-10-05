@@ -36,10 +36,12 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 void show_errormsg(char * msg);
 void update_cmd(void);
 int execute_file(const char *filename);
+int command_cd(const char *command);
 void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax, off_t mark_start, off_t mark_end);
 int view_edit_file(char *filename, int editor_mode);
 int file_has_extension(const char *filename, const char *extensions[]);
 void dive_into_directory(FileNode *current);
+int change_panel_directory(PanelProp *panel, const char *path);
 int noesc(int ch);
 void format_size_with_units(off_t size, char *size_str, size_t len, int maxlen);
 void show_shadow(WINDOW *win);

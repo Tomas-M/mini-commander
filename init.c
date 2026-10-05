@@ -37,6 +37,7 @@ void init_screen() {
     // Let wide-character input decode Alt and alternate function-key sequences.
     define_key("\033s", KEY_ALT_s);
     define_key("\033a", KEY_ALT_a);
+    define_key("\033g", KEY_ALT_g);
     define_key("\033\n", KEY_ALT_ENTER);
     define_key("\033\r", KEY_ALT_ENTER);
     define_key("\033[1~", KEY_HOME);

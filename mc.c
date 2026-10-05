@@ -52,23 +52,30 @@ int main(int argc, char *argv[]) {
                 break;
             case 'h':
                 fprintf(stderr, "Mini Commander (c) 2023 Tomas Matejicek + ChatGPT\n");
-                fprintf(stderr, "Usage: %s [-b|--nocolor] [-h|--help]\n", argv[0]);
-                return 1;
+                fprintf(stderr, "Usage: %s [-b|--nocolor] [left-directory [right-directory]]\n", argv[0]);
+                return 0;
                 break;
             case 'v':
                 fprintf(stderr, "Version 2.0\n");
                 return 1;
                 break;
+            default:
+                return 1;
         }
     }
 
 
-    getcwd(left_panel.path, sizeof(left_panel.path));
+    if (!getcwd(left_panel.path, sizeof(left_panel.path))) { perror("getcwd"); return 1; }
     strcpy(right_panel.path, left_panel.path);
 
     left_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
     right_panel.sort_order = SORT_BY_NAME_DIRSFIRST_ASC;
 
+    if (argc-optind > 2) { fprintf(stderr, "Expected at most two directory paths\n"); return 1; }
+    PanelProp *panels[]={&left_panel, &right_panel};
+    for (int i=0; optind+i < argc; i++)
+        if (change_panel_directory(panels[i], argv[optind+i]) != 0)
+        { perror(argv[optind+i]); return 1; }
     update_files_in_both_panels();
 
     init_screen();
@@ -112,10 +119,18 @@ int main(int argc, char *argv[]) {
         }
 
         memset(active_panel->file_under_cursor, 0, CMD_MAX);
-        strncpy(active_panel->file_under_cursor, current->name, strlen(current->name));
+        if (current) snprintf(active_panel->file_under_cursor, CMD_MAX, "%s", current->name);
         chdir(active_panel->path);
 
-        if (ch == 0 && !input_text[0]) { // Ctrl+Space, not printable Unicode input.
+        if (ch == KEY_ALT_g)
+        {
+            char path[CMD_MAX]="";
+            if (show_dialog("Change directory:", (char *[]) {"Go", "Cancel", NULL}, 0, path, 0, 0, 1) == 1 && path[0])
+                if (change_panel_directory(active_panel, path) != 0)
+                    show_errormsg(SPRINTF("Cannot open directory:\n%s\n%s", path, strerror(errno)));
+            continue;
+        }
+        if (ch == 0 && !input_text[0] && current) { // Ctrl+Space, not printable Unicode input.
             // TODO: fix when files are selected
             // TODO: fix when cursor is at ..
             operationContext stats = {0};
@@ -154,7 +169,7 @@ int main(int argc, char *argv[]) {
 
         int copying=ch == KEY_F(5) || ch == KEY_SHIFT_F5;
         int moving=ch == KEY_F(6) || ch == KEY_SHIFT_F6;
-        if (copying || moving) {
+        if ((copying || moving) && (current || active_panel->num_selected_files)) {
             if (active_panel->num_selected_files == 0 && strcmp(active_panel->file_under_cursor, "..") == 0) {
                 show_errormsg("Cannot operate on \"..\"");
                 continue;
@@ -285,6 +300,13 @@ int main(int argc, char *argv[]) {
 
             if (cmd_len > 0) {
                 if (strcmp(cmd, "exit") == 0) break;
+
+                if (!run_selected_file && command_cd(cmd))
+                {
+                    cmd[0]=0;
+                    cmd_len=cursor_pos=cmd_offset=0;
+                    continue;
+                }
 
                 mouse_tracking(0);
                 endwin();  // End ncurses mode

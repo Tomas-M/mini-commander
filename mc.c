@@ -123,6 +123,8 @@ int main(int argc, char *argv[]) {
         chdir(active_panel->path);
 
         if (ch == 21) { swap_panels(); continue; } // Ctrl+U
+        if (ch == KEY_ALT_p || ch == KEY_ALT_n)
+        { command_history_move(ch == KEY_ALT_p ? -1 : 1); continue; }
         if (ch == KEY_ALT_g)
         {
             char path[CMD_MAX]="";
@@ -261,15 +263,8 @@ int main(int argc, char *argv[]) {
         if (ch == KEY_ALT_ENTER || ch == KEY_ALT_a)
         {
             const char *text=ch == KEY_ALT_ENTER ? active_panel->file_under_cursor : active_panel->path;
-            int length=strlen(text);
-            if (cmd_len+length+1 < CMD_MAX)
-            {
-                memmove(cmd+cursor_pos+length+1, cmd+cursor_pos, cmd_len-cursor_pos+1);
-                memcpy(cmd+cursor_pos, text, length);
-                cmd[cursor_pos+length]=ch == KEY_ALT_ENTER ? ' ' : '/';
-                cmd_len+=length+1;
-                cursor_pos+=length+1;
-            }
+            if (*text && insert_shell_path(text, ch == KEY_ALT_a) != 0)
+                show_errormsg("Command line is too long");
         }
 
 
@@ -312,6 +307,7 @@ int main(int argc, char *argv[]) {
             if (cmd_len > 0) {
                 if (strcmp(cmd, "exit") == 0) break;
 
+                if (!run_selected_file) command_history_add(cmd);
                 if (!run_selected_file && command_cd(cmd))
                 {
                     cmd[0]=0;
@@ -485,6 +481,9 @@ int main(int argc, char *argv[]) {
     }
 
     cleanup();
+    command_history_free();
+    free_file_nodes(left_panel.files);
+    free_file_nodes(right_panel.files);
     return 0;
 }
 

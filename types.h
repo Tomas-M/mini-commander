@@ -3,6 +3,8 @@
 #define KEY_ALT_ENTER    0507  /* custom alt-enter key */
 #define KEY_ALT_a        0506  /* custom alt-a key */
 #define KEY_ALT_s        0505  /* custom alt-s key */
+#define KEY_ALT_p        0x1001
+#define KEY_ALT_n        0x1002
 #define KEY_ALT_g        0x1003
 #define KEY_SHIFT_F5     KEY_F(17)
 #define KEY_SHIFT_F6     KEY_F(18)

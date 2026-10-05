@@ -167,6 +167,8 @@ static void check_ranges(void)
         copy_text_range(lines, 0, length, (char *)actual);
         assert(rows == previous_rows && !memcmp(actual, expected, length));
     }
+    if (sizeof(size_t) < sizeof(off_t))
+        assert(!remember_edit(lines, (editor_state){0}, 0, (off_t)SIZE_MAX+1, 0) && errno == ENOMEM);
     free_file_lines(lines);
 }
 

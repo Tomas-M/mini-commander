@@ -23,8 +23,8 @@ static void copy_text_range(file_lines *lines, off_t start, off_t end, char *tex
 // Movement costs only a state record; edits additionally retain the replaced bytes.
 static undo_entry *remember_edit(file_lines *lines, editor_state state, off_t start, off_t end, size_t inserted)
 {
+    if ((uintmax_t)(end-start) > SIZE_MAX-sizeof(undo_entry)) { errno=ENOMEM; return NULL; }
     size_t removed=end-start;
-    if (removed > SIZE_MAX-sizeof(undo_entry)) { errno=ENOMEM; return NULL; }
     undo_entry *entry=malloc(sizeof(*entry)+removed);
     if (!entry) return NULL;
     *entry=(undo_entry){.state=state, .start=start, .removed=removed, .inserted=inserted};

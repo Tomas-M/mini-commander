@@ -4,6 +4,34 @@
 
 static const char tab_marker[]="<--->";
 
+typedef struct {
+    int row, byte, top, left;
+    off_t mark_start, mark_end;
+    size_t revision;
+} editor_state;
+
+typedef struct undo_entry {
+    struct undo_entry *next;
+    editor_state state;
+    off_t start;
+    size_t removed, inserted;
+    char text[];
+} undo_entry;
+
+static void copy_text_range(file_lines *lines, off_t start, off_t end, char *text);
+
+// Movement costs only a state record; edits additionally retain the replaced bytes.
+static undo_entry *remember_edit(file_lines *lines, editor_state state, off_t start, off_t end, size_t inserted)
+{
+    size_t removed=end-start;
+    if (removed > SIZE_MAX-sizeof(undo_entry)) { errno=ENOMEM; return NULL; }
+    undo_entry *entry=malloc(sizeof(*entry)+removed);
+    if (!entry) return NULL;
+    *entry=(undo_entry){.state=state, .start=start, .removed=removed, .inserted=inserted};
+    if (removed) copy_text_range(lines, start, end, entry->text);
+    return entry;
+}
+
 // Complete partial writes and retry interrupted writes before reporting a failure.
 static int write_all(int fd, const char *data, size_t length)
 {
@@ -423,6 +451,8 @@ int view_edit_file(char *filename, int editor_mode) {
 
     // Byte positions identify edits; terminal columns are derived only for display/navigation.
     int cursor_byte=0, input=ERR;
+    undo_entry *undo=NULL;
+    size_t revision=0, next_revision=0, saved_revision=0;
     while (1)
     {
         off_t seek;
@@ -439,7 +469,7 @@ int view_edit_file(char *filename, int editor_mode) {
             selected_end=swap;
         }
         if (mark_start < 0) selected_end=-1;
-        if (editor_mode && input != KEY_MOUSE)
+        if (editor_mode && input != KEY_MOUSE && input != 21)
         {
             if (cursor_row < screen_start_line) screen_start_line=cursor_row;
             if (cursor_row >= screen_start_line+max_y-2) screen_start_line=cursor_row-max_y+3;
@@ -511,6 +541,28 @@ int view_edit_file(char *filename, int editor_mode) {
             if (drag_start < 0) input=key;
         }
         else pressed_button=0;
+        editor_state before={cursor_row, cursor_byte, screen_start_line, screen_start_col, mark_start, mark_end, revision};
+        if (input == 21 && editor_mode) // Ctrl+U also restores movement and viewport changes.
+        {
+            if (!undo) continue;
+            if ((undo->removed || undo->inserted) &&
+                replace_text_range(lines, undo->start, undo->start+undo->inserted, undo->text, undo->removed, &num_lines) != 0)
+            { show_errormsg(SPRINTF("Cannot undo:\n%s", strerror(errno))); continue; }
+            num_bytes+=(off_t)undo->removed-(off_t)undo->inserted;
+            cursor_row=undo->state.row;
+            cursor_byte=undo->state.byte;
+            screen_start_line=undo->state.top;
+            screen_start_col=undo->state.left;
+            mark_start=undo->state.mark_start;
+            mark_end=undo->state.mark_end;
+            revision=undo->state.revision;
+            is_modified=revision != saved_revision;
+            undo_entry *previous=undo->next;
+            free(undo);
+            undo=previous;
+            drag_start=-1;
+            continue;
+        }
         if (input != KEY_MOUSE) drag_start=-1;
         int target_column=-1;
         off_t edit_start=position, edit_end=position;
@@ -590,7 +642,7 @@ int view_edit_file(char *filename, int editor_mode) {
                 {
                     if (write_file_lines(filename, lines) != 0)
                         show_errormsg(SPRINTF("Cannot save file:\n%s\n%s", filename, strerror(errno)));
-                    else is_modified=0;
+                    else { saved_revision=revision; is_modified=0; }
                 }
                 break;
             case KEY_F(7):
@@ -758,10 +810,17 @@ int view_edit_file(char *filename, int editor_mode) {
                 }
                 break;
         }
-        if (edit_start != edit_end || insert_length)
+        undo_entry *entry=NULL;
+        int changed_text=edit_start != edit_end || insert_length;
+        if (changed_text)
         {
-            if (replace_text_range(lines, edit_start, edit_end, insert, insert_length, &num_lines) != 0)
+            entry=remember_edit(lines, before, edit_start, edit_end, insert_length);
+            if (!entry || replace_text_range(lines, edit_start, edit_end, insert, insert_length, &num_lines) != 0)
+            {
                 show_errormsg(SPRINTF("Cannot edit file:\n%s", strerror(errno)));
+                free(entry);
+                entry=NULL;
+            }
             else
             {
                 num_bytes+=insert_length-(edit_end-edit_start);
@@ -796,7 +855,8 @@ int view_edit_file(char *filename, int editor_mode) {
                 if (mark_start == mark_end) mark_start=mark_end=-1;
                 line_at_position(lines, &position, &cursor_row);
                 cursor_byte=position;
-                is_modified=1;
+                revision=++next_revision;
+                is_modified=revision != saved_revision;
             }
         }
         free(block);
@@ -805,9 +865,24 @@ int view_edit_file(char *filename, int editor_mode) {
             current_line=line_at_row(lines, cursor_row, NULL);
             cursor_byte=text_offset(current_line->line, current_line->line_length, target_column, tab_width);
         }
+        if (editor_mode && !changed_text &&
+            (before.row != cursor_row || before.byte != cursor_byte || before.top != screen_start_line ||
+             before.left != screen_start_col || before.mark_start != mark_start || before.mark_end != mark_end))
+        {
+            entry=remember_edit(lines, before, 0, 0, 0);
+            if (!entry)
+            {
+                cursor_row=before.row; cursor_byte=before.byte;
+                screen_start_line=before.top; screen_start_col=before.left;
+                mark_start=before.mark_start; mark_end=before.mark_end;
+                show_errormsg("Not enough memory for undo");
+            }
+        }
+        if (entry) { entry->next=undo; undo=entry; }
     }
 
 close_editor:
+    while (undo) { undo_entry *previous=undo->next; free(undo); undo=previous; }
     if (editor_mode)
     {
         mousemask(saved_mousemask, NULL);

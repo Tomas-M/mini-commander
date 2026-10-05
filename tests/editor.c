@@ -15,7 +15,7 @@ static void *test_malloc(size_t size);
 
 int color_enabled=1;
 extern SCREEN *screen;
-static int allocation_failure=-1, event_index, editing;
+static int allocation_failure=-1, event_index, editing, close_prompts;
 static const char *test_name;
 typedef struct { int key; const char *text; int x, y; mmask_t mouse; } Event;
 static const Event *events;
@@ -45,6 +45,7 @@ void test_error(char *message)
 int test_dialog(char *title, char *buttons[], int selected, char *prompt, int danger, int vertical, int edit)
 {
     assert(!prompt);
+    if (strstr(title, "was modified")) close_prompts++;
     return 1;
 }
 
@@ -103,6 +104,7 @@ static void check_editor(const char *name, const char *original, const char *exp
     test_name=name;
     events=keys;
     event_index=0;
+    close_prompts=0;
     resizeterm(24, 80);
     char path[]="/tmp/mc-editor-XXXXXX.c";
     int fd=mkstemps(path, 2);
@@ -315,6 +317,25 @@ int main(void)
     check_editor("footer gaps and inactive slots do nothing", "abc", "Xabc", (Event[]){M(BUTTON1_CLICKED, 18, 23), M(BUTTON1_CLICKED, 64, 23), M(BUTTON1_CLICKED, 79, 23), M(BUTTON3_CLICKED, 75, 23), T("X"), SAVE_QUIT});
     check_editor("content drag onto footer does not activate delete", "abc\ndef", "abc\ndef", (Event[]){M(BUTTON1_PRESSED, 0, 1), M(REPORT_MOUSE_POSITION, 55, 23), M(BUTTON1_RELEASED, 55, 23), SAVE_QUIT});
     check_editor("footer drag to another button does not activate", "abc", "abc", (Event[]){M(BUTTON1_PRESSED, 2, 23), M(REPORT_MOUSE_POSITION, 75, 23), M(BUTTON1_RELEASED, 75, 23), SAVE_QUIT});
+    check_editor("undo movement then UTF-8 insertion", "abc", "Yabc", (Event[]){T("ž"), K(KEY_RIGHT), K(21), AT(0, 1), K(21), AT(0, 0), T("Y"), SAVE_QUIT});
+    check_editor("undo multiline deletion", "až\n中é\nz", "až\n中é\nz", (Event[]){K(KEY_F(3)), K(KEY_DOWN), K(KEY_DOWN), K(KEY_END), K(KEY_F(3)), K(KEY_F(8)), K(21), SAVE_QUIT});
+    check_editor("undo block move", "abcDEFghi", "abcDEFghi", (Event[]){K(KEY_RIGHT), K(KEY_RIGHT), K(KEY_RIGHT), K(KEY_F(3)), K(KEY_RIGHT), K(KEY_RIGHT), K(KEY_RIGHT), K(KEY_F(3)), K(KEY_END), K(KEY_F(6)), K(21), SAVE_QUIT});
+    check_editor("undo newlines and backspace", "中z", "中z", (Event[]){T("ž"), K('\n'), K(KEY_BACKSPACE), K(21), AT(1, 0), K(21), AT(0, 1), K(21), AT(0, 0), K(KEY_F(10)), K(-1)});
+    assert(!close_prompts);
+    check_editor("undo scroll restores viewport", tall, tall, (Event[]){K(KEY_NPAGE), TOP("row01"), K(KEY_NPAGE), K(21), TOP("row01"), AT(21, 0), K(21), TOP("row00"), AT(0, 0), SAVE_QUIT});
+    check_editor("undo clipped mouse movement restores viewport", clipped, clipped, (Event[]){K(KEY_END), TOP("--->"), M(BUTTON1_CLICKED, 0, 1), AT(0, 0), TOP("--->"), K(21), TOP("--->"), AT(0, 79), K(21), TOP("A<--->"), AT(0, 0), SAVE_QUIT});
+    check_editor("undo beyond beginning", "abc", "abc", (Event[]){K(21), K(KEY_RIGHT), K(21), K(21), AT(0, 0), SAVE_QUIT});
+    check_editor("undo after save is modified", "abc", "Xabc", (Event[]){T("X"), K(KEY_F(2)), T("Y"), K(21), K(KEY_F(10)), K(-1)});
+    assert(!close_prompts);
+    check_editor("undo saved edit requires save", "abc", "abc", (Event[]){T("X"), K(KEY_F(2)), K(21), K(KEY_F(10)), K(-1)});
+    assert(close_prompts == 1);
+    Event *long_history=calloc(8195, sizeof(*long_history));
+    assert(long_history);
+    for (int i=0; i < 4096; i++) long_history[i]=(Event)K(i%2 ? KEY_LEFT : KEY_RIGHT);
+    for (int i=4096; i < 8192; i++) long_history[i]=(Event)K(21);
+    long_history[8192]=(Event)K(KEY_F(2)); long_history[8193]=(Event)K(KEY_F(10)); long_history[8194]=(Event)K(-1);
+    check_editor("undo 4096 movement records", "abc", "abc", long_history);
+    free(long_history);
     editing=0;
     check_editor("viewer footer and read-only", "abc\ndef", "abc\ndef", (Event[]){K(KEY_F(5)), K(KEY_F(6)), K(KEY_F(8)), T("x"), K(KEY_RESIZE), K(KEY_F(3)), K(-1)});
     check_editor("viewer footer click and resize", "abc", "abc", (Event[]){M(BUTTON1_CLICKED, 2, 23), M(BUTTON1_CLICKED, 55, 23), K(KEY_RESIZE), M(BUTTON1_CLICKED, 13, 19), K(-1)});
@@ -323,6 +344,6 @@ int main(void)
     delscreen(screen);
     fclose(input);
     fclose(output);
-    puts("Editor: 10000 range edits, allocation failures, tab/selection rendering and 42 input sequences passed.");
+    puts("Editor: range edits, allocation failures, rendering, movement/viewport undo and input sequences passed.");
     return 0;
 }

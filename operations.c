@@ -129,37 +129,64 @@ int recursive_operation(const char *src, const char *tgt, operationContext *cont
     if (context->abort == 1) return OPERATION_ABORT;
 
     if (ret == OPERATION_OK || ret == OPERATION_SKIP) return ret;
+    if (ret != OPERATION_PARENT_OK_PROCESS_CHILDS && ret != OPERATION_RETRY_AFTER_CHILDS) return ret;
     if (ret == OPERATION_PARENT_OK_PROCESS_CHILDS || ret == OPERATION_RETRY_AFTER_CHILDS) {
         // Recursive operation on a directory is needed for further processing
         struct stat statbuf = {0};
-        lstat(src, &statbuf); // no error checking, we assume that if original operation was ok, this will be ok too
+        if (lstat(src, &statbuf) != 0) return operation_error(SPRINTF("Cannot stat:\n%s", src), context);
         if (S_ISDIR(statbuf.st_mode)) {
             DIR *dir = opendir(src);
-            if (!dir) return -1;
+            while (!dir)
+            {
+                int decision=operation_error(SPRINTF("Cannot read directory:\n%s", src), context);
+                if (decision != OPERATION_RETRY) return decision;
+                dir=opendir(src);
+            }
             struct dirent *entry;
-            while ((entry = readdir(dir))) {
+            int result=OPERATION_OK;
+            for (;;) {
+                errno=0;
+                entry=readdir(dir);
+                if (!entry) { if (errno) result=operation_error(SPRINTF("Cannot read directory:\n%s", src), context); break; }
                 if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
                 char source_path[CMD_MAX];
                 char target_path[CMD_MAX];
                 sprintf(source_path, "%s%s%s", src, src[strlen(src) - 1] == '/' ? "" : "/", entry->d_name);
                 sprintf(target_path, "%s%s%s", tgt, *tgt && tgt[strlen(tgt) - 1] == '/' ? "" : "/", entry->d_name);
-                recursive_operation(source_path, target_path, context, operation);
-                if (context->abort == 1) { closedir(dir); return 0; }
+                int child_result=recursive_operation(source_path, target_path, context, operation);
+                if (child_result != OPERATION_OK) result=child_result;
+                if (context->abort == 1) { closedir(dir); return OPERATION_ABORT; }
             }
             closedir(dir);
+            if (result != OPERATION_OK) { context->keep_item_selected=1; return result; }
             if (ret == OPERATION_RETRY_AFTER_CHILDS) {
                 // try again the initial src
                 ret = operation(src, tgt, context);
-                if (context->abort == 1) return 0;
+                if (context->abort == 1) return OPERATION_ABORT;
                 if (ret != OPERATION_OK) return ret;
             }
-        } else {
-            // no childs, end ok
-            return OPERATION_OK;
         }
     }
 
-    return 0;
+    // A cross-filesystem move must preserve metadata before removing any source.
+    if (operation == copy_operation && context->moving)
+    {
+        for (;;)
+        {
+            struct stat source;
+            if (lstat(src, &source) == 0)
+            {
+                struct timespec times[]={source.st_atim, source.st_mtim};
+                if (lchown(tgt, source.st_uid, source.st_gid) == 0 &&
+                    (S_ISLNK(source.st_mode) || chmod(tgt, source.st_mode & 07777) == 0) &&
+                    utimensat(AT_FDCWD, tgt, times, AT_SYMLINK_NOFOLLOW) == 0) break;
+            }
+            int decision=operation_error(SPRINTF("Cannot preserve metadata:\n%s", tgt), context);
+            if (decision != OPERATION_RETRY) return decision;
+        }
+    }
+
+    return OPERATION_OK;
 }
 
 
@@ -179,7 +206,7 @@ int countstats_operation(const char *src, const char *tgt, operationContext *con
 
     context->keep_item_selected = 1; // don't unselect items on stat
     format_number(context->total_size, num);
-    sprintf(infotext, "Items: %lld\nSize: %s bytes", context->total_items, num);
+    sprintf(infotext, "Items: %lld\nSize: %s bytes", (long long)context->total_items, num);
 
     int delta = update_progress_dialog_delta(SPRINTF("Scanning %s", src), 0, 0, infotext);
     if (delta == 2) {
@@ -368,7 +395,15 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                 ssize_t bytes = 0;
                 ssize_t total_bytes = 0;
                 while ((bytes = read(src_fd, buffer, sizeof(buffer))) > 0) {
-                    if (write(tgt_fd, buffer, bytes) != bytes) {
+                    ssize_t offset=0;
+                    while (offset < bytes)
+                    {
+                        ssize_t written=write(tgt_fd, buffer+offset, bytes-offset);
+                        if (written < 0 && errno == EINTR) continue;
+                        if (written <= 0) { if (!written) errno=EIO; break; }
+                        offset+=written;
+                    }
+                    if (offset != bytes) {
                         close(src_fd);
                         close(tgt_fd);
                         sprintf(errmsg,"Cannot write data to:\n%s", tgt);
@@ -401,8 +436,10 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
 
                 update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), statbufsrc.st_size > 0 ? total_bytes * 100 / statbufsrc.st_size : 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
 
+                int finish_error=context->moving && fsync(tgt_fd) != 0 ? errno : 0;
                 close(src_fd);
-                close(tgt_fd);
+                if (close(tgt_fd) != 0 && !finish_error) finish_error=errno;
+                if (finish_error) { errno=finish_error; sprintf(errmsg,"Cannot finish writing:\n%s", tgt); break; }
                 ret = 0;
             }
             // source is a directory
@@ -410,7 +447,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                 if (target_exists && S_ISDIR(statbuftgt.st_mode)) {
                     // do not overwrite existing directory
                     ret = 0;
-                } else if (mkdir(tgt, statbufsrc.st_mode) == -1) {
+                } else if (mkdir(tgt, statbufsrc.st_mode | (context->moving ? S_IRWXU : 0)) == -1) {
                     sprintf(errmsg,"Failed to create directory:\n%s", tgt);
                     break;
                 } else {
@@ -452,6 +489,10 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     ret = 0;
                 }
             }
+            else if (S_ISFIFO(statbufsrc.st_mode)) {
+                if (mkfifo(tgt, statbufsrc.st_mode) != 0) { sprintf(errmsg,"Cannot create FIFO:\n%s", tgt); break; }
+            }
+            else { errno=ENOTSUP; sprintf(errmsg,"Unsupported file type:\n%s", src); }
         } while (false);
 
 
@@ -500,6 +541,23 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
             ret=rename(src, tgt);
         }
         if (ret == 0) return OPERATION_OK;
+        if (errno == EXDEV)
+        {
+            operationContext copy=*context;
+            copy.moving=1;
+            copy.keep_item_selected=0;
+            if (copy.current_items) copy.current_items--;
+            ret=recursive_operation(src, tgt, &copy, copy_operation);
+            *context=copy;
+            if (ret != OPERATION_OK || copy.abort || copy.keep_item_selected)
+            { context->keep_item_selected=1; return ret == OPERATION_OK ? OPERATION_SKIP : ret; }
+            operationContext remove={.confirm_all_yes=1, .skip_all=context->skip_all};
+            ret=recursive_operation(src, "", &remove, delete_operation);
+            context->abort=remove.abort;
+            context->skip_all=remove.skip_all;
+            if (ret != OPERATION_OK) context->keep_item_selected=1;
+            return ret;
+        }
         ret=operation_error(SPRINTF("Failed to rename\n%s\nTo\n%s", src, tgt), context);
         if (ret != OPERATION_RETRY) return ret;
     }

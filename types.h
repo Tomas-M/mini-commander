@@ -98,6 +98,7 @@ typedef struct operationContext {
     int keep_item_selected;
     char confirm_yes_prefix[CMD_MAX];
     int abort;
+    int moving;
 } operationContext;
 
 enum operationResult {

@@ -181,7 +181,7 @@ void update_panel(WINDOW *win, PanelProp *panel) {
         panel->scroll_index=panel->selected_index-visible+1;
     if (panel->scroll_index < 0) panel->scroll_index=0;
     int name_width = width - 12 - 7 - 3;
-    char info[CMD_MAX];
+    char info[CMD_MAX] = {0};
 
     // Get the current year
     time_t now = time(NULL);

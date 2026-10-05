@@ -26,6 +26,7 @@ int lines(char * title)
 }
 
 void show_shadow(WINDOW *win) {
+    if (!win) return;
     int start_y, start_x, height, width;
 
     int cur_y, cur_x;
@@ -36,6 +37,7 @@ void show_shadow(WINDOW *win) {
     getmaxyx(win, height, width);
 
     WINDOW *wholescreen = dupwin(newscr);
+    if (!wholescreen) return;
 
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < 2; j++) {
@@ -74,9 +76,10 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
 
     int title_width = 0;
     char *title_copy = strdup(title);
+    if (!title_copy) return NULL;
     char *line = strtok(title_copy, "\n");
     while (line) {
-        int line_length = strlen(line) + 4;
+        int line_length = text_column(line, strlen(line), 1) + 4;
         title_width = line_length > title_width ? line_length : title_width;
         line = strtok(NULL, "\n");
     }
@@ -106,11 +109,16 @@ WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int i
         height += total_buttons - 1; // Increase height by total_buttons - 1 if vertical layout
     }
 
+    if (max_x < 10 || height > max_y) return NULL;
+    if (width > max_x) width=max_x;
+
     int start_y = (max_y - height) / 2 - (is_danger ? 8 : 0);
+    if (start_y < 0) start_y=0;
     int start_x = (max_x - width) / 2;
 
     // Increase the size of the window by 2 in both dimensions
     WINDOW *win = newwin(height, width, start_y, start_x);
+    if (!win) return NULL;
 
     if (is_danger) {
         wbkgd(win, COLOR_PAIR(COLOR_WHITE_ON_RED));
@@ -205,6 +213,11 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
     dialog_save_screen();
 
     WINDOW *win = create_dialog(title, buttons, prompt_is_present, is_danger, vertical_buttons);
+    if (!win) {
+        mouseinterval(saved_mouseinterval);
+        dialog_restore_screen();
+        return -1;
+    }
     keypad(win, TRUE);
     update_dialog_buttons(win, title, buttons, selected, prompt_is_present, editing_prompt, is_danger, vertical_buttons);
 

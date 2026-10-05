@@ -42,11 +42,89 @@ static int operation_error(char *message, operationContext *context)
     return OPERATION_SKIP;
 }
 
+// Reject truncation before a constructed path reaches any filesystem operation.
+static int operation_path(char *result, const char *directory, const char *name)
+{
+    size_t length=strlen(directory);
+    int written=snprintf(result, CMD_MAX, "%s%s%s", directory,
+        length && directory[length-1] != '/' ? "/" : "", name);
+    if (written < 0 || written >= CMD_MAX) { errno=ENAMETOOLONG; return -1; }
+    return 0;
+}
+
+static int prepare_operation_paths(const char *directory, const char *name, const char *target,
+    int count, char *source_path, char *target_path)
+{
+    if (operation_path(source_path, directory, name) != 0) return -1;
+    target_path[0]='\0';
+    if (!target || !target[0]) return 0;
+    char base[CMD_MAX];
+    if (operation_path(base, target[0] == '/' ? "" : directory, target) != 0) return -1;
+    struct stat info;
+    int exists=stat(base, &info) == 0;
+    if (!exists && errno != ENOENT) return -1;
+    if (exists && S_ISDIR(info.st_mode)) return operation_path(target_path, base, name);
+    if (count > 1) { errno=ENOTDIR; return -1; }
+    return operation_path(target_path, "", base);
+}
+
+// Match whole path components, including the special case of the root directory.
+static int path_contains(const char *directory, const char *path)
+{
+    size_t length=strlen(directory);
+    while (length > 1 && directory[length-1] == '/') length--;
+    return length && !strncmp(directory, path, length) &&
+        (path[length] == '\0' || path[length] == '/' || (length == 1 && directory[0] == '/'));
+}
+
+// A not-yet-created destination is checked through its nearest existing ancestor.
+// realpath also catches destinations reached through symlinks or "..".
+static int target_inside_source(const char *source, const char *target)
+{
+    char *resolved_source=realpath(source, NULL);
+    if (!resolved_source) return -1;
+    char *candidate=strdup(target), *resolved_target=NULL;
+    if (!candidate) { int error=errno; free(resolved_source); errno=error; return -1; }
+    for (;;)
+    {
+        resolved_target=realpath(candidate[0] ? candidate : ".", NULL);
+        if (resolved_target || errno != ENOENT || !candidate[0] || !strcmp(candidate, "/")) break;
+        size_t length=strlen(candidate);
+        while (length > 1 && candidate[length-1] == '/') candidate[--length]='\0';
+        char *slash=strrchr(candidate, '/');
+        if (!slash) candidate[0]='\0';
+        else slash[slash == candidate]='\0';
+    }
+    int error=errno;
+    int inside=resolved_target ? path_contains(resolved_source, resolved_target) : -1;
+    free(resolved_target);
+    free(candidate);
+    free(resolved_source);
+    errno=error;
+    return inside;
+}
+
+static int operation_percent(off_t current, off_t total)
+{
+    if (current <= 0 || total <= 0) return 0;
+    if (current >= total) return 100;
+    if (current <= INT64_MAX/100) return current*100/total;
+    // Avoid overflow even for sizes near the upper limit of a 64-bit off_t.
+    int low=0, high=100;
+    while (high-low > 1)
+    {
+        int middle=(low+high)/2;
+        off_t threshold=(total/100)*middle+((total%100)*middle+99)/100;
+        if (current >= threshold) low=middle;
+        else high=middle;
+    }
+    return low;
+}
+
 int panel_mass_action(OperationFunc operation, char *tgt, operationContext *context) {
     int err = 0;
     char source_path[CMD_MAX] = {0};
     char target_path[CMD_MAX] = {0};
-    char target[CMD_MAX] = {0};
     FileNode *unselect_item = NULL;
 
     WINDOW *saved_screen;
@@ -76,23 +154,15 @@ int panel_mass_action(OperationFunc operation, char *tgt, operationContext *cont
     while (current != NULL) {
         if (current->is_selected) {
             context->keep_item_selected = 0;
-            sprintf(source_path, "%s/%s", active_panel->path, current->name);
-
-            if (tgt != NULL && strlen(tgt) > 0)
-            {
-                if (tgt[0] == '/') { // absolute path
-                    sprintf(target, "%s", tgt);
-                } else { // relative path
-                    sprintf(target, "%s/%s", active_panel->path, tgt);
-                }
-
-                if (initial_num_selected == 1 && !file_exists(target)) {
-                    sprintf(target_path, "%s", target);
-                } else {
-                    sprintf(target_path, "%s/%s", target, current->name);
-                }
-            }
-            err = recursive_operation(source_path, target_path, context, operation);
+            int prepared;
+            do {
+                prepared=prepare_operation_paths(active_panel->path, current->name, tgt,
+                    initial_num_selected, source_path, target_path);
+                if (prepared) err=operation_error("Cannot prepare source or target path", context);
+            } while (prepared && err == OPERATION_RETRY);
+            if (!prepared)
+                err = recursive_operation(source_path, target_path, context, operation);
+            else context->keep_item_selected=1;
             if (context->abort == 1) break;
             if (err == OPERATION_OK && context->keep_item_selected == 0) {
                 if (current->is_selected) {
@@ -151,8 +221,17 @@ int recursive_operation(const char *src, const char *tgt, operationContext *cont
                 if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
                 char source_path[CMD_MAX];
                 char target_path[CMD_MAX];
-                sprintf(source_path, "%s%s%s", src, src[strlen(src) - 1] == '/' ? "" : "/", entry->d_name);
-                sprintf(target_path, "%s%s%s", tgt, *tgt && tgt[strlen(tgt) - 1] == '/' ? "" : "/", entry->d_name);
+                int path_result;
+                do {
+                    path_result=operation_path(source_path, src, entry->d_name);
+                    if (!path_result)
+                    {
+                        target_path[0]='\0';
+                        if (tgt[0]) path_result=operation_path(target_path, tgt, entry->d_name);
+                    }
+                    if (path_result) path_result=operation_error("Directory entry path is too long", context);
+                } while (path_result == OPERATION_RETRY);
+                if (path_result) { result=path_result; if (context->abort) break; continue; }
                 int child_result=recursive_operation(source_path, target_path, context, operation);
                 if (child_result != OPERATION_OK) result=child_result;
                 if (context->abort == 1) { closedir(dir); return OPERATION_ABORT; }
@@ -225,7 +304,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
     int btn = 0;
     errno = 0;
 
-    int delta = update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
+    int delta = update_progress_dialog_delta(SPRINTF("Delete\n%s", src), 100, operation_percent(context->current_items, context->total_items), NULL);
     if (delta == 2) {
         context->abort = 1;
         return OPERATION_ABORT;
@@ -253,7 +332,7 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
                 if (context->confirm_all_yes == 1) {
                     btn = 1;
                 }
-                if (strlen(context->confirm_yes_prefix) != 0 && strncmp(context->confirm_yes_prefix, src, strlen(context->confirm_yes_prefix)) == 0) {
+                if (path_contains(context->confirm_yes_prefix, src)) {
                     btn = 1;
                     prefix_already_matches = 1;
                 }
@@ -263,13 +342,13 @@ int delete_operation(const char *src, const char *tgt, operationContext *context
 
                 if (btn == 0) {
                     char title[CMD_MAX] = {};
-                    sprintf(title, "Directory \"%s\" not empty.\nDelete it recursively?\n", src);
+                    snprintf(title, sizeof(title), "Directory \"%s\" not empty.\nDelete it recursively?\n", src);
                     btn = show_dialog(title, (char *[]) {"Yes", "No", "All", "None", "Abort", NULL}, 0, NULL, 1, 0, 0);
                 }
 
                 if (btn == 1) { // yes
                     if (!prefix_already_matches) {
-                        sprintf(context->confirm_yes_prefix, "%s", src);
+                        snprintf(context->confirm_yes_prefix, sizeof(context->confirm_yes_prefix), "%s", src);
                     }
                     return OPERATION_RETRY_AFTER_CHILDS;
                 } else if (btn <= 0 || btn == 2) { // no
@@ -304,7 +383,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
     int ret = OPERATION_RETRY;
     errno = 0; // reset
 
-    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
+    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), 0, operation_percent(context->current_items, context->total_items), NULL);
     if (delta == 2) {
         context->abort = 1;
         return OPERATION_ABORT;
@@ -318,7 +397,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
         do {
             struct stat statbufsrc;
             if (lstat(src, &statbufsrc) != 0) {
-                sprintf(errmsg,"Stat operation failed for %s", src);
+                snprintf(errmsg, sizeof(errmsg), "Stat operation failed for %s", src);
                 break;
             }
 
@@ -327,7 +406,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                 if (errno == ENOENT) {
                     target_exists = 0;
                 } else { // other error
-                    sprintf(errmsg,"Stat operation failed for %s", tgt);
+                    snprintf(errmsg, sizeof(errmsg), "Stat operation failed for %s", tgt);
                     break;
                 }
             }
@@ -340,17 +419,29 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                 break;
             }
 
+            if (S_ISDIR(statbufsrc.st_mode))
+            {
+                int inside=target_inside_source(src, tgt);
+                if (inside != 0)
+                {
+                    if (inside > 0) errno=EINVAL;
+                    snprintf(errmsg, sizeof(errmsg), inside > 0 ?
+                        "Cannot copy a directory into itself:\n%s" : "Cannot resolve target path:\n%s", tgt);
+                    break;
+                }
+            }
+
             // source is a regular file
             if (S_ISREG(statbufsrc.st_mode)) {
 
                 if (target_exists && S_ISDIR(statbuftgt.st_mode)) {
-                    sprintf(errmsg,"Cannot overwrite directory\n%s\nwith a file\n%s", tgt, src);
+                    snprintf(errmsg, sizeof(errmsg), "Cannot overwrite directory\n%s\nwith a file\n%s", tgt, src);
                     break;
                 }
 
                 int src_fd = open(src, O_RDONLY);
                 if (src_fd == -1) {
-                    sprintf(errmsg,"Cannot open source file for reading:\n%s", src);
+                    snprintf(errmsg, sizeof(errmsg), "Cannot open source file for reading:\n%s", src);
                     break;
                 }
 
@@ -362,12 +453,12 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                         tgt_fd=open(tgt, O_WRONLY | O_CREAT, statbufsrc.st_mode);
                         if (tgt_fd == -1) {
                             close(src_fd);
-                            sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
+                            snprintf(errmsg, sizeof(errmsg), "Cannot open target file for writing:\n%s", tgt);
                             break;
                         }
                     } else {
                         close(src_fd);
-                        sprintf(errmsg,"Cannot open target file for writing:\n%s", tgt);
+                        snprintf(errmsg, sizeof(errmsg), "Cannot open target file for writing:\n%s", tgt);
                         break;
                     }
                 }
@@ -393,7 +484,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
 
                 char buffer[16384];
                 ssize_t bytes = 0;
-                ssize_t total_bytes = 0;
+                off_t total_bytes = 0;
                 while ((bytes = read(src_fd, buffer, sizeof(buffer))) > 0) {
                     ssize_t offset=0;
                     while (offset < bytes)
@@ -406,11 +497,11 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     if (offset != bytes) {
                         close(src_fd);
                         close(tgt_fd);
-                        sprintf(errmsg,"Cannot write data to:\n%s", tgt);
+                        snprintf(errmsg, sizeof(errmsg), "Cannot write data to:\n%s", tgt);
                         break;
                     }
                     total_bytes += bytes;
-                    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), statbufsrc.st_size > 0 ? total_bytes * 100 / statbufsrc.st_size : 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
+                    int delta = update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), operation_percent(total_bytes, statbufsrc.st_size), operation_percent(context->current_items, context->total_items), NULL);
                     if (delta > 0) {
                         close(src_fd);
                         close(tgt_fd);
@@ -430,16 +521,16 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     // Handle error
                     close(src_fd);
                     close(tgt_fd);
-                    sprintf(errmsg,"Cannot read data from:\n%s", src);
+                    snprintf(errmsg, sizeof(errmsg), "Cannot read data from:\n%s", src);
                     break;
                 }
 
-                update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), statbufsrc.st_size > 0 ? total_bytes * 100 / statbufsrc.st_size : 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
+                update_progress_dialog_delta(SPRINTF("Copying\n%s\nTo\n%s", src, tgt), operation_percent(total_bytes, statbufsrc.st_size), operation_percent(context->current_items, context->total_items), NULL);
 
                 int finish_error=context->moving && fsync(tgt_fd) != 0 ? errno : 0;
                 close(src_fd);
                 if (close(tgt_fd) != 0 && !finish_error) finish_error=errno;
-                if (finish_error) { errno=finish_error; sprintf(errmsg,"Cannot finish writing:\n%s", tgt); break; }
+                if (finish_error) { errno=finish_error; snprintf(errmsg, sizeof(errmsg), "Cannot finish writing:\n%s", tgt); break; }
                 ret = 0;
             }
             // source is a directory
@@ -448,7 +539,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     // do not overwrite existing directory
                     ret = 0;
                 } else if (mkdir(tgt, statbufsrc.st_mode | (context->moving ? S_IRWXU : 0)) == -1) {
-                    sprintf(errmsg,"Failed to create directory:\n%s", tgt);
+                    snprintf(errmsg, sizeof(errmsg), "Failed to create directory:\n%s", tgt);
                     break;
                 } else {
                     ret = 0;
@@ -459,7 +550,7 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                 char buffer[CMD_MAX];
                 ssize_t len = readlink(src, buffer, sizeof(buffer) - 1);
                 if (len == -1) {
-                    sprintf(errmsg,"Failed to read symbolic link from\n%s", src);
+                    snprintf(errmsg, sizeof(errmsg), "Failed to read symbolic link from\n%s", src);
                     break;
                 }
                 buffer[len] = '\0';
@@ -468,13 +559,13 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
                     int decision=confirm_overwrite(tgt, context);
                     if (decision != OPERATION_OK) return decision;
                     if (unlink(tgt) == -1) {
-                        sprintf(errmsg, "Failed to remove existing target file\n%s", tgt);
+                        snprintf(errmsg, sizeof(errmsg), "Failed to remove existing target file\n%s", tgt);
                         break;
                     }
                 }
 
                 if (symlink(buffer, tgt) == -1) {
-                    sprintf(errmsg,"Failed to create symbolic link\n%s", tgt);
+                    snprintf(errmsg, sizeof(errmsg), "Failed to create symbolic link\n%s", tgt);
                     break;
                 } else {
                     ret = 0;
@@ -483,16 +574,16 @@ int copy_operation(const char *src, const char *tgt, operationContext *context) 
             // source is a character device or block device
             else if (S_ISCHR(statbufsrc.st_mode) || S_ISBLK(statbufsrc.st_mode)) {
                 if (mknod(tgt, statbufsrc.st_mode, statbufsrc.st_rdev) == -1) {
-                    sprintf(errmsg,"Failed to create special file\n%s", tgt);
+                    snprintf(errmsg, sizeof(errmsg), "Failed to create special file\n%s", tgt);
                     break;
                 } else {
                     ret = 0;
                 }
             }
             else if (S_ISFIFO(statbufsrc.st_mode)) {
-                if (mkfifo(tgt, statbufsrc.st_mode) != 0) { sprintf(errmsg,"Cannot create FIFO:\n%s", tgt); break; }
+                if (mkfifo(tgt, statbufsrc.st_mode) != 0) { snprintf(errmsg, sizeof(errmsg), "Cannot create FIFO:\n%s", tgt); break; }
             }
-            else { errno=ENOTSUP; sprintf(errmsg,"Unsupported file type:\n%s", src); }
+            else { errno=ENOTSUP; snprintf(errmsg, sizeof(errmsg), "Unsupported file type:\n%s", src); }
         } while (false);
 
 
@@ -513,7 +604,7 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
     int ret = OPERATION_RETRY;
     errno = 0; // reset
 
-    int delta = update_progress_dialog_delta(SPRINTF("Renaming\n%s\nTo\n%s", src, tgt), 0, context->total_items > 0 ? context->current_items * 100 / context->total_items : 0, NULL);
+    int delta = update_progress_dialog_delta(SPRINTF("Renaming\n%s\nTo\n%s", src, tgt), 0, operation_percent(context->current_items, context->total_items), NULL);
     if (delta == 2) {
         context->abort = 1;
         return OPERATION_ABORT;
@@ -568,6 +659,7 @@ int move_operation(const char *src, const char *tgt, operationContext *context) 
 
 int mkdir_recursive(const char *path, mode_t mode) {
     struct stat st;
+    if (!path || !path[0]) return ENOENT;
 
     // Check if the directory exists and is really a directory
     if (stat(path, &st) == 0) {
@@ -583,36 +675,38 @@ int mkdir_recursive(const char *path, mode_t mode) {
 
     // try mkdir directly, if OK return
     if (mkdir(path, mode) == 0) return 0;
+    if (errno != ENOENT) return errno;
 
-    // If the directory does not exist and could not be created so far, start the recursive creation
-    char tmp[256];
-    char *p = NULL;
-    size_t len;
-
-    snprintf(tmp, sizeof(tmp), "%s", path);
-    len = strlen(tmp);
-    if (tmp[len - 1] == '/') {
-        tmp[len - 1] = 0;
-    }
-    for (p = tmp + 1; *p; p++) {
+    // Keep the complete requested path when creating missing parent directories.
+    char *tmp=strdup(path);
+    if (!tmp) return errno;
+    size_t len=strlen(tmp);
+    while (len > 1 && tmp[len-1] == '/') tmp[--len]='\0';
+    int error=0;
+    for (char *p = tmp + 1; *p; p++) {
         if (*p == '/') {
             *p = 0;
             if (stat(tmp, &st) != 0) {
                 if (errno == ENOENT) {
                     if (mkdir(tmp, mode) != 0) {
-                        return errno; // Error creating directory
+                        error=errno;
+                        break;
                     }
                 } else {
-                    return errno; // Some other error occurred
+                    error=errno;
+                    break;
                 }
             } else if (!S_ISDIR(st.st_mode)) {
-                return ENOTDIR; // Path exists but is not a directory
+                error=ENOTDIR;
+                break;
             }
             *p = '/';
         }
     }
 
-    return mkdir(tmp, mode) ? errno : 0;
+    if (!error && mkdir(tmp, mode) != 0) error=errno;
+    free(tmp);
+    return error;
 }
 
 

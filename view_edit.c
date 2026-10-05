@@ -140,23 +140,48 @@ static file_lines *split_file_lines(const char *data, size_t length, off_t *coun
     return NULL;
 }
 
-// Use the same line construction for initial loading and later range replacements.
-file_lines *read_file_lines(const char *filename, off_t *num_lines, off_t *num_bytes)
+// Check the opened file before mapping it, so both UI entry points and symlinks
+// use its actual size and never narrow a 64-bit file size to size_t silently.
+static file_lines *load_file_lines(const char *filename, off_t *num_lines, off_t *num_bytes, int editor_mode)
 {
     *num_lines=0;
+    *num_bytes=0;
     int fd=open(filename, O_RDONLY);
     if (fd < 0) return NULL;
     struct stat statbuf;
     if (fstat(fd, &statbuf) != 0) { close(fd); return NULL; }
     *num_bytes=statbuf.st_size;
-    char *data=statbuf.st_size ? mmap(NULL, statbuf.st_size, PROT_READ, MAP_PRIVATE, fd, 0) : "";
+    const off_t editor_limit=(off_t)4*1024*1024*1024;
+    const off_t warning_size=(off_t)64*1024*1024;
+    if (statbuf.st_size < 0 || (uintmax_t)statbuf.st_size > SIZE_MAX ||
+        (editor_mode && statbuf.st_size > editor_limit))
+    {
+        close(fd);
+        errno=EFBIG;
+        return NULL;
+    }
+    if (editor_mode && statbuf.st_size > warning_size &&
+        show_dialog("Large file: editing may be slow.\nOpen anyway?",
+            (char *[]) {"Open", "Cancel", NULL}, 1, NULL, 0, 0, 0) != 1)
+    {
+        close(fd);
+        errno=ECANCELED;
+        return NULL;
+    }
+    size_t length=(size_t)statbuf.st_size;
+    char *data=length ? mmap(NULL, length, PROT_READ, MAP_PRIVATE, fd, 0) : "";
     if (data == MAP_FAILED) { close(fd); return NULL; }
-    file_lines *tail, *head=split_file_lines(data, statbuf.st_size, num_lines, &tail);
+    file_lines *tail, *head=split_file_lines(data, length, num_lines, &tail);
     int error=errno;
-    if (statbuf.st_size) munmap(data, statbuf.st_size);
+    if (length) munmap(data, length);
     close(fd);
     errno=error;
     return head;
+}
+
+file_lines *read_file_lines(const char *filename, off_t *num_lines, off_t *num_bytes)
+{
+    return load_file_lines(filename, num_lines, num_bytes, 0);
 }
 
 // Resolve a row and, when requested, its absolute byte offset.
@@ -409,6 +434,19 @@ int view_edit_file(char *filename, int editor_mode) {
     const char *viewer_buttons[]={"", "Quit", "", "", "", "Search", "", "", "Quit"};
     const char **buttons=editor_mode ? editor_buttons : viewer_buttons;
 
+    // Ask about large files before loading their contents or opening editor windows.
+    off_t num_lines, num_bytes;
+    file_lines *lines=load_file_lines(filename, &num_lines, &num_bytes, editor_mode);
+    if (!lines)
+    {
+        if (errno == ECANCELED) return 0;
+        if (errno == EFBIG)
+            show_errormsg(editor_mode ? "File is too large to open safely.\nEditor limit: 4 GiB." :
+                "File is too large to open safely.");
+        else show_errormsg(SPRINTF("Cannot open file:\n%s\n%s", filename, strerror(errno)));
+        return -1;
+    }
+
     // Get the screen dimensions
     getmaxyx(stdscr, max_y, max_x);
 
@@ -419,22 +457,19 @@ int view_edit_file(char *filename, int editor_mode) {
 
     // Create a new window for displaying the file content
     WINDOW *content_win = newwin(max_y - 2, max_x, 1, 0);
+    if (!toprow_win || !content_win)
+    {
+        delwin(toprow_win);
+        delwin(content_win);
+        free_file_lines(lines);
+        show_errormsg("Terminal is too small to open the file.");
+        return -1;
+    }
     keypad(content_win, TRUE);
 
     werase(content_win); // Clear the window
     wbkgd(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE)); // Set the background color
     wattron(content_win, COLOR_PAIR(COLOR_WHITE_ON_BLUE));
-
-    // Build the linked list of line pointers
-    off_t num_lines, num_bytes;
-    file_lines *lines = read_file_lines(filename, &num_lines, &num_bytes);
-    if (!lines)
-    {
-        delwin(toprow_win);
-        delwin(content_win);
-        show_errormsg(SPRINTF("Cannot open file:\n%s\n%s", filename, strerror(errno)));
-        return -1;
-    }
 
     // Extract file extension
     char *file_type = strrchr(filename, '.');  // find last '.' in filename

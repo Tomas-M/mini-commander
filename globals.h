@@ -41,7 +41,7 @@ void command_history_add(const char *command);
 void command_history_move(int direction);
 void command_history_free(void);
 int command_cd(const char *command);
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax, off_t mark_start, off_t mark_end);
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int show_tabs, int syntax, off_t mark_start, off_t mark_end);
 int view_edit_file(char *filename, int editor_mode);
 int file_has_extension(const char *filename, const char *extensions[]);
 void dive_into_directory(FileNode *current);

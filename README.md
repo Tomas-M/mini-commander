@@ -39,8 +39,11 @@ slax.org
 - **Syntax highlighting:** basic highlighting for C source and headers (`.c`,
   `.h`) and shell scripts (`.sh`). Files starting with `#!/` also receive shell
   highlighting, even without an extension.
-- **See invisible characters:** tabs appear as `<--->` in the editor and five
-  spaces in the viewer, while remaining single characters for editing. The editor marks
+- **See invisible characters:** by default, tabs appear as `<--->` in the editor,
+  and trailing spaces appear as dots in the same color. `F9` toggles `HideTabs` /
+  `ShowTabs`; when hidden, tabs appear as five spaces and trailing spaces as ordinary
+  spaces. Tabs always appear as five spaces in the viewer and remain single
+  characters for editing. The editor marks
   control characters. Its status line shows the line, column, byte position,
   file size, and Unicode code point under the cursor.
 - **Editor save protection:** prompts before closing unsaved changes, preserves

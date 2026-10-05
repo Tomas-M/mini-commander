@@ -359,11 +359,14 @@ static int highlight_token(const char *text, int syntax, int *attributes)
 }
 
 // Render complete UTF-8 cells and clip by columns without wrapping into the next row.
-void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int syntax, off_t mark_start, off_t mark_end)
+void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int editor_mode, int show_tabs, int syntax, off_t mark_start, off_t mark_end)
 {
     int row=getcury(win), column=0, match_end=0, attributes=COLOR_PAIR(COLOR_WHITE_ON_BLUE);
     int tab_width=sizeof(tab_marker)-1;
     const char *text=line->line;
+    int trailing_start=line->line_length;
+    if (show_tabs)
+        while (trailing_start > 0 && text[trailing_start-1] == ' ') trailing_start--;
     for (int offset=0; offset < line->line_length && column < current_col+max_x;)
     {
         wchar_t chars[CCHARW_MAX];
@@ -373,7 +376,15 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         if (offset >= match_end)
             match_end=offset+highlight_token(text+offset, syntax, &attributes);
         int cell_attributes=attributes;
-        if (is_tab) cell_attributes=COLOR_PAIR(COLOR_CYAN_ON_BLUE);
+        if (is_tab)
+        {
+            if (show_tabs) cell_attributes=COLOR_PAIR(COLOR_CYAN_ON_BLUE);
+        }
+        else if (show_tabs && offset >= trailing_start)
+        {
+            cell_attributes=COLOR_PAIR(COLOR_CYAN_ON_BLUE);
+            chars[0]=L'.';
+        }
         else if (!iswprint(chars[0]))
         {
             chars[0]=editor_mode && chars[0] < 32 ? L'@'+chars[0] : L'.';
@@ -386,7 +397,7 @@ void display_line(WINDOW *win, file_lines *line, int max_x, int current_col, int
         {
             int x=column+part-current_col, cell_width=is_tab ? 1 : width;
             if (x < 0 || x+cell_width > max_x) continue;
-            if (is_tab) chars[0]=editor_mode ? tab_marker[part] : L' ';
+            if (is_tab) chars[0]=show_tabs ? tab_marker[part] : L' ';
             cchar_t cell;
             setcchar(&cell, chars, cell_attributes & ~A_COLOR, PAIR_NUMBER(cell_attributes), NULL);
             mvwadd_wchnstr(win, row, x, &cell, 1);
@@ -423,6 +434,7 @@ int view_edit_file(char *filename, int editor_mode) {
     int screen_start_col = 0;
     int cursor_row = 0;
     int is_modified = 0;
+    int show_tabs=editor_mode;
     int syntax=0;
     int tab_width=sizeof(tab_marker)-1;
     off_t mark_start=-1, mark_end=-1;
@@ -430,7 +442,7 @@ int view_edit_file(char *filename, int editor_mode) {
     mmask_t saved_mousemask=0;
     int saved_mouseinterval=0, pressed_button=0;
     char find_str[CMD_MAX] = {0};
-    const char *editor_buttons[]={"Save", "Mark", "", "Copy", "Move", "Search", "Delete", "", "Quit"};
+    const char *editor_buttons[]={"Save", "Mark", "", "Copy", "Move", "Search", "Delete", "HideTabs", "Quit"};
     const char *viewer_buttons[]={"", "Quit", "", "", "", "Search", "", "", "Quit"};
     const char **buttons=editor_mode ? editor_buttons : viewer_buttons;
 
@@ -529,7 +541,7 @@ int view_edit_file(char *filename, int editor_mode) {
         for (; shown && shown_rows < max_y-2; shown_rows++, shown=shown->next)
         {
             wmove(content_win, shown_rows, 0);
-            display_line(content_win, shown, max_x, screen_start_col, editor_mode, syntax, selected_start-shown_position, selected_end-shown_position);
+            display_line(content_win, shown, max_x, screen_start_col, editor_mode, show_tabs, syntax, selected_start-shown_position, selected_end-shown_position);
             shown_position+=shown->line_length+1;
         }
         werase(toprow_win);
@@ -606,6 +618,13 @@ int view_edit_file(char *filename, int editor_mode) {
         char *block=NULL;
         switch (input)
         {
+            case KEY_F(9):
+                if (editor_mode)
+                {
+                    show_tabs=!show_tabs;
+                    editor_buttons[7]=show_tabs ? "HideTabs" : "ShowTabs";
+                }
+                break;
             case KEY_F(3):
                 if (!editor_mode) goto close_editor;
                 if (mark_start >= 0 && mark_end < 0)

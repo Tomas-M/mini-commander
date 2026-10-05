@@ -11,6 +11,47 @@ void select_file(PanelProp *panel, FileNode *file, int selected)
     if (!file->is_dir) panel->bytes_selected_files+=selected ? file->size : -file->size;
 }
 
+// '*' matches any sequence; '?' consumes one complete UTF-8 character.
+int filename_matches(const char *pattern, const char *name)
+{
+    const char *star=NULL, *retry=NULL;
+    while (*name)
+    {
+        if (*pattern == '*') { star=++pattern; retry=name; }
+        else if (*pattern == '?')
+        {
+            pattern++;
+            name+=text_next(name, strlen(name), 0);
+        }
+        else if (*pattern && *pattern == *name) { pattern++; name++; }
+        else if (star)
+        {
+            retry+=text_next(retry, strlen(retry), 0);
+            name=retry;
+            pattern=star;
+        }
+        else return 0;
+    }
+    while (*pattern == '*') pattern++;
+    return !*pattern;
+}
+
+// action: clear (0), select (1), or invert (-1); '..' is never selected.
+void select_pattern(PanelProp *panel, const char *pattern, int action)
+{
+    for (FileNode *file=panel->files; file; file=file->next)
+        if (filename_matches(pattern, file->name))
+            select_file(panel, file, action < 0 ? !file->is_selected : action);
+}
+
+void swap_panels(void)
+{
+    PanelProp temporary=left_panel;
+    left_panel=right_panel;
+    right_panel=temporary;
+    active_panel=active_panel == &left_panel ? &right_panel : &left_panel;
+}
+
 // A drag stays in its starting panel; right drags paint a fixed selection state.
 int panel_mouse(MEVENT *event, PanelMouse *mouse)
 {

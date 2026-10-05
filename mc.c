@@ -122,6 +122,7 @@ int main(int argc, char *argv[]) {
         if (current) snprintf(active_panel->file_under_cursor, CMD_MAX, "%s", current->name);
         chdir(active_panel->path);
 
+        if (ch == 21) { swap_panels(); continue; } // Ctrl+U
         if (ch == KEY_ALT_g)
         {
             char path[CMD_MAX]="";
@@ -130,6 +131,16 @@ int main(int argc, char *argv[]) {
                     show_errormsg(SPRINTF("Cannot open directory:\n%s\n%s", path, strerror(errno)));
             continue;
         }
+        if (!cmd_len && !active_panel->search_mode && input_text[0] && !input_text[1] && strchr("+-*", input_text[0]))
+        {
+            int action=input_text[0] == '*' ? -1 : input_text[0] == '+';
+            char pattern[CMD_MAX]="*";
+            if (action < 0 || show_dialog(action ? "Select files matching (* and ?):" : "Unselect files matching (* and ?):",
+                (char *[]) {"OK", "Cancel", NULL}, 0, pattern, 0, 0, 1) == 1)
+                select_pattern(active_panel, pattern, action);
+            continue;
+        }
+
         if (ch == 0 && !input_text[0] && current) { // Ctrl+Space, not printable Unicode input.
             // TODO: fix when files are selected
             // TODO: fix when cursor is at ..

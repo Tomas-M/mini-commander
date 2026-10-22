@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <grp.h>
 #include <locale.h>
 #include <limits.h>
 #include <ncurses.h>

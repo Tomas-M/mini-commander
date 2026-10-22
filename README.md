@@ -61,6 +61,20 @@ slax.org
   inverts the selection. The default mask `*` selects or clears all items except
   `..`, including directories and dotfiles. Masks support only `*` and `?`, where
   `?` matches one displayed UTF-8 character. Matching is case-sensitive.
+- **File permissions:** press `Ctrl+X`, release it, then press `C` to open a
+  Midnight Commander-style chmod dialog. Its 12 checkboxes cover owner, group,
+  and other permissions, plus setuid, setgid, and the sticky bit. Use arrows or
+  `Tab` to move, `Space` or a mouse click to toggle, and `Enter` to apply.
+  Framed Permission and File sections show the settings and file details;
+  blue letters identify keyboard shortcuts, and `[< Set >]` is the default action.
+  The octal mode updates as you edit. `Set` changes the current file and proceeds
+  to the next marked file; `Set all` applies the complete mode to all remaining
+  marked files. A changed checkbox gains a `*`; `Insert` or `T` toggles this mark
+  independently (`Insert` also advances to the next control). `Marked all`
+  copies only these bits, while `Set marked` and `Clear marked` enable or
+  disable them across the remaining marked files,
+  preserving every other bit. `Esc` or `Cancel` leaves pending changes unapplied.
+  Directories are changed without recursion; symbolic links change their targets.
 - **Moves across filesystems:** `F6` copies when a rename cannot cross a mount
   boundary, preserves ownership, permissions and timestamps, and removes the
   source only after the complete copy succeeds. Skipped, failed or aborted copies
@@ -95,6 +109,7 @@ slax.org
 | `Alt+A` | Insert the active panel's directory path literally, with a trailing slash so a filename can be appended. |
 | `Alt+P` / `Alt+N` | Previous/next command in the in-memory history; returning past the newest entry restores the unfinished command. |
 | `Ctrl+U` | Swap the panels, including paths, sorting, selections, cursors and scroll positions; focus follows the original active panel. In the editor, undo. |
+| `Ctrl+X`, then `C` | Edit permissions of the marked files, or the file under the cursor, using checkboxes. |
 | `Alt+G` | Go to a directory entered in a dialog; supports relative paths and `~`. |
 | `Shift+F5` / `Shift+F6` / `Shift+F7` | Copy, move/rename, or create a directory with the name under the cursor prefilled, without its path. Typing appends to the name; relative targets use the active directory. |
 | `Enter` | Execute a typed shell command in the active directory; with an empty command line, open a directory or run an executable. |

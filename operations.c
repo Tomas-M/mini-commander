@@ -52,6 +52,56 @@ static int operation_path(char *result, const char *directory, const char *name)
     return 0;
 }
 
+// Chmod affects the chosen entries themselves, without descending into directories.
+void change_file_permissions(FileNode *current)
+{
+    int selected=active_panel->num_selected_files > 0;
+    int multiple=active_panel->num_selected_files > 1;
+    if (!selected && !current) return;
+    if (!selected && !strcmp(current->name, "..")) {
+        show_errormsg("Cannot operate on \"..\"");
+        return;
+    }
+
+    operationContext context={0};
+    int action=CHMOD_SET, apply_all=0;
+    mode_t mode=0, marked=0;
+    for (FileNode *file=selected ? active_panel->files : current; file;
+         file=selected ? file->next : NULL) {
+        if ((selected && !file->is_selected) || !strcmp(file->name, "..")) continue;
+        char path[CMD_MAX];
+        struct stat info;
+        int result;
+        do {
+            result=operation_path(path, active_panel->path, file->name);
+            // Like chmod(2), stat follows a symbolic link to its target.
+            if (!result) result=stat(path, &info);
+            if (result) result=operation_error(SPRINTF("Cannot read permissions:\n%s", file->name), &context);
+        } while (result == OPERATION_RETRY);
+        if (context.abort) break;
+        if (result != OPERATION_OK) continue;
+
+        if (!apply_all) {
+            mode=info.st_mode & 07777;
+            marked=0;
+            action=show_chmod_dialog(file->name, &info, &mode, &marked, multiple);
+            if (action == CHMOD_CANCEL) break;
+            apply_all=action != CHMOD_SET;
+        }
+
+        mode_t target=mode;
+        if (action == CHMOD_MARKED_ALL) target=(info.st_mode & ~marked) | (mode & marked);
+        if (action == CHMOD_SET_MARKED) target=info.st_mode | marked;
+        if (action == CHMOD_CLEAR_MARKED) target=info.st_mode & ~marked;
+        do {
+            result=chmod(path, target & 07777);
+            if (result) result=operation_error(SPRINTF("Cannot change permissions:\n%s", file->name), &context);
+        } while (result == OPERATION_RETRY);
+        if (context.abort) break;
+        if (result == OPERATION_OK && selected) select_file(active_panel, file, 0);
+    }
+}
+
 static int prepare_operation_paths(const char *directory, const char *name, const char *target,
     int count, char *source_path, char *target_path)
 {

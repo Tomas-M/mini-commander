@@ -83,7 +83,9 @@ enum Color {
     COLOR_MAGENTA_ON_BLUE,
     COLOR_CYAN_ON_BLUE,
     COLOR_CYAN_ON_BLACK,
-    COLOR_RED_ON_BLUE
+    COLOR_RED_ON_BLUE,
+    COLOR_BLUE_ON_WHITE,
+    COLOR_BLUE_ON_CYAN
 };
 
 
@@ -112,6 +114,15 @@ enum operationResult {
 
 
 typedef int (*OperationFunc)(const char *, const char *, operationContext *);
+
+enum chmodAction {
+    CHMOD_CANCEL = 0,
+    CHMOD_SET,
+    CHMOD_SET_ALL,
+    CHMOD_MARKED_ALL,
+    CHMOD_SET_MARKED,
+    CHMOD_CLEAR_MARKED
+};
 
 
 // Both rule sets apply to C files that also start with a shell shebang.

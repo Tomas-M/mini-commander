@@ -83,6 +83,7 @@ int main(int argc, char *argv[]) {
     MEVENT event;
     PanelMouse mouse={0};
     int pressed_button=0;
+    int ctrl_x_pending=0;
 
     uname(&unameData);
     pw = getpwuid(getuid());
@@ -121,6 +122,22 @@ int main(int argc, char *argv[]) {
         memset(active_panel->file_under_cursor, 0, CMD_MAX);
         if (current) snprintf(active_panel->file_under_cursor, CMD_MAX, "%s", current->name);
         chdir(active_panel->path);
+
+        if (ch == 24) { // Ctrl+X starts a two-key command, as in Midnight Commander.
+            ctrl_x_pending=1;
+            active_panel->search_mode=0;
+            continue;
+        }
+        if (ctrl_x_pending && ch != ERR && ch != KEY_MOUSE && ch != KEY_RESIZE) {
+            ctrl_x_pending=0;
+            if ((input_text[0] == 'c' || input_text[0] == 'C') && !input_text[1]) {
+                change_file_permissions(current);
+                update_files_in_both_panels();
+                redraw_ui();
+            }
+            continue;
+        }
+        if (ch == KEY_MOUSE || ch == KEY_RESIZE) ctrl_x_pending=0;
 
         if (ch == 21) { swap_panels(); continue; } // Ctrl+U
         if (ch == KEY_ALT_p || ch == KEY_ALT_n)

@@ -414,3 +414,206 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 void show_errormsg(char * msg) {
     show_dialog(msg, (char *[]) {"OK", NULL}, 0, NULL, 1, 0, 0);
 }
+
+// A mark selects a bit for batch changes; the checkbox is that bit's desired value.
+static const struct { mode_t bit; const char *label; int hotkey; } chmod_permissions[] = {
+    {S_ISUID, "set user ID on execution", 4},
+    {S_ISGID, "set group ID on execution", 4},
+    {S_ISVTX, "sticky bit", 5},
+    {S_IRUSR, "read by owner", 0},
+    {S_IWUSR, "write by owner", 0},
+    {S_IXUSR, "execute/search by owner", 1},
+    {S_IRGRP, "read by group", 3},
+    {S_IWGRP, "write by group", 13},
+    {S_IXGRP, "execute/search by group", 5},
+    {S_IROTH, "read by others", 5},
+    {S_IWOTH, "write by others", 2},
+    {S_IXOTH, "execute/search by others", 13}
+};
+
+typedef struct {
+    const char *label;
+    int action, hotkey;
+    dialog_button bounds;
+} chmod_button;
+
+// Align both columns of actions across rows, including the wider default button.
+static void chmod_button_pair(chmod_button *buttons, int width, int row)
+{
+    int first=strlen(buttons[0].label)+(buttons[0].action == CHMOD_SET ? 6 : 4);
+    int second=strlen(buttons[1].label)+4;
+    buttons[0].bounds=(dialog_button){width/2-first, row, first};
+    buttons[1].bounds=(dialog_button){width/2+1, row, second};
+}
+
+static void chmod_frame(WINDOW *win, int y, int x, int height, int width)
+{
+    mvwhline(win, y, x+1, ACS_HLINE, width-2);
+    mvwhline(win, y+height-1, x+1, ACS_HLINE, width-2);
+    mvwvline(win, y+1, x, ACS_VLINE, height-2);
+    mvwvline(win, y+1, x+width-1, ACS_VLINE, height-2);
+    mvwaddch(win, y, x, ACS_ULCORNER);
+    mvwaddch(win, y, x+width-1, ACS_URCORNER);
+    mvwaddch(win, y+height-1, x, ACS_LLCORNER);
+    mvwaddch(win, y+height-1, x+width-1, ACS_LRCORNER);
+}
+
+static void chmod_separator(WINDOW *win, int row)
+{
+    mvwhline(win, row, 2, ACS_HLINE, getmaxx(win)-4);
+    mvwaddch(win, row, 1, ACS_LTEE);
+    mvwaddch(win, row, getmaxx(win)-2, ACS_RTEE);
+}
+
+static void chmod_label(WINDOW *win, int row, int x, const char *label, int hotkey, int focused)
+{
+    int normal=COLOR_PAIR(focused ? COLOR_BLACK_ON_CYAN_BTN : COLOR_BLACK_ON_WHITE);
+    wattrset(win, normal);
+    mvwaddstr(win, row, x, label);
+    wattrset(win, A_BOLD | COLOR_PAIR(focused ? COLOR_BLUE_ON_CYAN : COLOR_BLUE_ON_WHITE));
+    mvwaddch(win, row, x+hotkey, label[hotkey]);
+    wattrset(win, normal);
+}
+
+int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, mode_t *marked, int multiple)
+{
+    int name_width=text_column(name, strlen(name), 1);
+    int width=32+(name_width+3 > 24 ? name_width+3 : 24)+7;
+    int height=multiple ? 23 : 20;
+    if (width > getmaxx(stdscr)) width=getmaxx(stdscr);
+    if (width < 63 || getmaxy(stdscr) < height) {
+        show_errormsg(SPRINTF("Chmod needs a terminal of at least 63 x %d cells", height));
+        return CHMOD_CANCEL;
+    }
+
+    dialog_save_screen();
+    WINDOW *win=newwin(height, width, (getmaxy(stdscr)-height)/2, (getmaxx(stdscr)-width)/2);
+    if (!win) { dialog_restore_screen(); return CHMOD_CANCEL; }
+    keypad(win, TRUE);
+    wbkgd(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+    show_shadow(win);
+    int saved_mouseinterval=mouseinterval(50);
+    int saved_cursor=curs_set(0);
+
+    chmod_button buttons[6];
+    int count=0;
+    if (multiple) {
+        buttons[count++]=(chmod_button){"Set all", CHMOD_SET_ALL, 4, {0}};
+        buttons[count++]=(chmod_button){"Marked all", CHMOD_MARKED_ALL, 0, {0}};
+        buttons[count++]=(chmod_button){"Set marked", CHMOD_SET_MARKED, 1, {0}};
+        buttons[count++]=(chmod_button){"Clear marked", CHMOD_CLEAR_MARKED, 1, {0}};
+        chmod_button_pair(buttons, width, 17);
+        chmod_button_pair(buttons+2, width, 18);
+    }
+    buttons[count++]=(chmod_button){"Set", CHMOD_SET, 0, {0}};
+    buttons[count++]=(chmod_button){"Cancel", CHMOD_CANCEL, 0, {0}};
+    chmod_button_pair(buttons+count-2, width, height-3);
+
+    // Keep the login name held by main() intact: getpwuid() shares static storage.
+    char owner[256], group[256], lookup[CMD_MAX];
+    struct passwd owner_entry, *owner_info=NULL;
+    struct group group_entry, *group_info=NULL;
+    if (getpwuid_r(info->st_uid, &owner_entry, lookup, sizeof(lookup), &owner_info) == 0 && owner_info)
+        snprintf(owner, sizeof(owner), "%s", owner_info->pw_name);
+    else snprintf(owner, sizeof(owner), "%lu", (unsigned long)info->st_uid);
+    if (getgrgid_r(info->st_gid, &group_entry, lookup, sizeof(lookup), &group_info) == 0 && group_info)
+        snprintf(group, sizeof(group), "%s", group_info->gr_name);
+    else snprintf(group, sizeof(group), "%lu", (unsigned long)info->st_gid);
+
+    int focus=0, pressed=-1, action=CHMOD_CANCEL;
+    while (1) {
+        wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+        werase(win);
+        chmod_frame(win, 1, 1, height-2, width-2);
+        chmod_frame(win, 2, 3, 14, 32);
+        chmod_frame(win, 2, 36, 14, width-39);
+        if (multiple) chmod_separator(win, 16);
+        chmod_separator(win, height-4);
+        wattrset(win, A_BOLD | COLOR_PAIR(COLOR_BLUE_ON_WHITE));
+        mvwaddstr(win, 1, (width-15)/2, " Chmod command ");
+        mvwaddstr(win, 2, 4, " Permission ");
+        mvwaddstr(win, 2, 37, " File ");
+        for (int i=0; i < 12; i++) {
+            wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+            mvwaddch(win, 3+i, 4, *marked & chmod_permissions[i].bit ? '*' : ' ');
+            wattrset(win, COLOR_PAIR(i == focus ? COLOR_BLACK_ON_CYAN_BTN : COLOR_BLACK_ON_WHITE));
+            mvwprintw(win, 3+i, 5, "[%c] ", *mode & chmod_permissions[i].bit ? 'x' : ' ');
+            chmod_label(win, 3+i, 9, chmod_permissions[i].label, chmod_permissions[i].hotkey, i == focus);
+        }
+        wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+        mvwaddstr(win, 3, 38, "Name:");
+        draw_text(win, 4, 38, SHORTEN((char *)name, width-42), 0, width-42);
+        mvwaddstr(win, 5, 38, "Permissions (octal):");
+        mvwprintw(win, 6, 38, "%04o", (unsigned int)(*mode & 07777));
+        mvwaddstr(win, 7, 38, "Owner name:");
+        draw_text(win, 8, 38, owner, 0, width-42);
+        mvwaddstr(win, 9, 38, "Group name:");
+        draw_text(win, 10, 38, group, 0, width-42);
+        for (int i=0; i < count; i++) {
+            wattrset(win, COLOR_PAIR(focus == 12+i ? COLOR_BLACK_ON_CYAN_BTN : COLOR_BLACK_ON_WHITE));
+            int is_default=buttons[i].action == CHMOD_SET;
+            dialog_button button=buttons[i].bounds;
+            mvwprintw(win, button.y, button.x, is_default ? "[< %s >]" : "[ %s ]", buttons[i].label);
+            chmod_label(win, button.y, button.x+(is_default ? 3 : 2), buttons[i].label,
+                buttons[i].hotkey, focus == 12+i);
+        }
+        wnoutrefresh(win);
+        refresh_screen(0);
+
+        char input_text[MB_LEN_MAX+1];
+        MEVENT event;
+        int ch=read_text_key(win, input_text, &event);
+        if (ch != KEY_MOUSE && ch != ERR) pressed=-1;
+        if (ch == 27 || ch == KEY_F(10) || ch == KEY_RESIZE) break;
+        if (ch == KEY_UP || ch == KEY_LEFT || ch == KEY_BTAB) focus=(focus+12+count-1)%(12+count);
+        if (ch == KEY_DOWN || ch == KEY_RIGHT || ch == '\t') focus=(focus+1)%(12+count);
+        if (ch == KEY_HOME) focus=0;
+        if (ch == KEY_END) focus=12+count-1;
+        if (ch == '\n') { action=focus < 12 ? CHMOD_SET : buttons[focus-12].action; break; }
+        // T marks the focused permission; Insert also moves on to the next control.
+        if (focus < 12 && (ch == KEY_IC || !strcmp(input_text, "t") || !strcmp(input_text, "T"))) {
+            *marked^=chmod_permissions[focus].bit;
+            if (ch == KEY_IC) focus=(focus+1)%(12+count);
+            continue;
+        }
+        int activate=!strcmp(input_text, " ");
+        if (input_text[0] && !input_text[1] && !activate) {
+            int key=tolower((unsigned char)input_text[0]), button=-1;
+            for (int i=0; i < count; i++)
+                if (key == tolower((unsigned char)buttons[i].label[buttons[i].hotkey])) { button=i; break; }
+            if (button >= 0) { action=buttons[button].action; break; }
+            for (int i=0; i < 12; i++)
+                if (key == chmod_permissions[i].label[chmod_permissions[i].hotkey]) { focus=i; activate=1; break; }
+        }
+        if (ch == KEY_MOUSE) {
+            int x=event.x-getbegx(win), y=event.y-getbegy(win), hit=-1;
+            if (y >= 3 && y < 15 && x >= 5 && x < 9+(int)strlen(chmod_permissions[y-3].label)) hit=y-3;
+            for (int i=0; i < count; i++) {
+                dialog_button button=buttons[i].bounds;
+                if (y == button.y && x >= button.x && x < button.x+button.width) hit=12+i;
+            }
+            int clicked=event.bstate & (BUTTON1_CLICKED|BUTTON1_DOUBLE_CLICKED|BUTTON1_TRIPLE_CLICKED);
+            if (event.bstate & BUTTON1_PRESSED) {
+                pressed=hit;
+                if (hit >= 0) focus=hit;
+            }
+            if (event.bstate & BUTTON1_RELEASED) {
+                clicked=hit >= 0 && pressed == hit;
+                pressed=-1;
+            }
+            if (clicked && hit >= 0) { focus=hit; activate=1; }
+        }
+        if (activate) {
+            if (focus < 12) {
+                *mode^=chmod_permissions[focus].bit;
+                *marked|=chmod_permissions[focus].bit;
+            } else { action=buttons[focus-12].action; break; }
+        }
+    }
+
+    mouseinterval(saved_mouseinterval);
+    delwin(win);
+    dialog_restore_screen();
+    if (saved_cursor != ERR) curs_set(saved_cursor);
+    return action;
+}

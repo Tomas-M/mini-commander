@@ -59,7 +59,7 @@ void init_screen() {
     noecho();
     curs_set(1);
 
-    // Each row defines one color pair; monochrome keeps only the two light backgrounds.
+    // Each row defines one color pair; monochrome preserves light dialog/footer backgrounds.
     static const short palette[][3]={
         {COLOR_WHITE_ON_BLACK, COLOR_WHITE, COLOR_BLACK},
         {COLOR_BLACK_ON_WHITE, COLOR_BLACK, COLOR_WHITE},
@@ -74,12 +74,14 @@ void init_screen() {
         {COLOR_YELLOW_ON_CYAN, COLOR_YELLOW, COLOR_CYAN},
         {COLOR_BLACK_ON_CYAN, COLOR_BLACK, COLOR_CYAN},
         {COLOR_BLACK_ON_CYAN_BTN, COLOR_BLACK, COLOR_CYAN},
-        {COLOR_BLACK_ON_CYAN_PMPT, COLOR_BLACK, COLOR_CYAN}
+        {COLOR_BLACK_ON_CYAN_PMPT, COLOR_BLACK, COLOR_CYAN},
+        {COLOR_BLUE_ON_WHITE, COLOR_BLUE, COLOR_WHITE},
+        {COLOR_BLUE_ON_CYAN, COLOR_BLUE, COLOR_CYAN}
     };
     for (size_t i=0; i < sizeof(palette)/sizeof(*palette); i++) {
         short pair=palette[i][0], foreground=palette[i][1], background=palette[i][2];
         if (!color_enabled) {
-            int light=pair == COLOR_BLACK_ON_WHITE || pair == COLOR_BLACK_ON_CYAN;
+            int light=pair == COLOR_BLACK_ON_WHITE || pair == COLOR_BLACK_ON_CYAN || pair == COLOR_BLUE_ON_WHITE;
             foreground=light ? COLOR_BLACK : COLOR_WHITE;
             background=light ? COLOR_WHITE : COLOR_BLACK;
         }

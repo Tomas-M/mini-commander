@@ -33,6 +33,8 @@ int lines(char * title);
 WINDOW *create_dialog(char *title, char *buttons[], int prompt_is_present, int is_danger, int vertical_buttons);
 void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt, int is_danger, int vertical_buttons);
 int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is_danger, int vertical_buttons, int edit_prompt);
+int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, mode_t *marked, int multiple);
+void change_file_permissions(FileNode *current);
 void show_errormsg(char * msg);
 void update_cmd(void);
 int execute_file(const char *filename);

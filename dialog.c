@@ -446,7 +446,7 @@ static void chmod_button_pair(chmod_button *buttons, int width, int row)
     buttons[1].bounds=(dialog_button){width/2+1, row, second};
 }
 
-static void chmod_frame(WINDOW *win, int y, int x, int height, int width)
+static void draw_framed_box(WINDOW *win, int y, int x, int height, int width)
 {
     mvwhline(win, y, x+1, ACS_HLINE, width-2);
     mvwhline(win, y+height-1, x+1, ACS_HLINE, width-2);
@@ -458,14 +458,14 @@ static void chmod_frame(WINDOW *win, int y, int x, int height, int width)
     mvwaddch(win, y+height-1, x+width-1, ACS_LRCORNER);
 }
 
-static void chmod_separator(WINDOW *win, int row)
+static void draw_dialog_separator(WINDOW *win, int row)
 {
     mvwhline(win, row, 2, ACS_HLINE, getmaxx(win)-4);
     mvwaddch(win, row, 1, ACS_LTEE);
     mvwaddch(win, row, getmaxx(win)-2, ACS_RTEE);
 }
 
-static void chmod_label(WINDOW *win, int row, int x, const char *label, int hotkey, int focused)
+static void draw_dialog_hotkey(WINDOW *win, int row, int x, const char *label, int hotkey, int focused)
 {
     int normal=COLOR_PAIR(focused ? COLOR_BLACK_ON_CYAN_BTN : COLOR_BLACK_ON_WHITE);
     wattrset(win, normal);
@@ -524,11 +524,11 @@ int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, m
     while (1) {
         wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
         werase(win);
-        chmod_frame(win, 1, 1, height-2, width-2);
-        chmod_frame(win, 2, 3, 14, 32);
-        chmod_frame(win, 2, 36, 14, width-39);
-        if (multiple) chmod_separator(win, 16);
-        chmod_separator(win, height-4);
+        draw_framed_box(win, 1, 1, height-2, width-2);
+        draw_framed_box(win, 2, 3, 14, 32);
+        draw_framed_box(win, 2, 36, 14, width-39);
+        if (multiple) draw_dialog_separator(win, 16);
+        draw_dialog_separator(win, height-4);
         wattrset(win, A_BOLD | COLOR_PAIR(COLOR_BLUE_ON_WHITE));
         mvwaddstr(win, 1, (width-15)/2, " Chmod command ");
         mvwaddstr(win, 2, 4, " Permission ");
@@ -538,7 +538,7 @@ int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, m
             mvwaddch(win, 3+i, 4, *marked & chmod_permissions[i].bit ? '*' : ' ');
             wattrset(win, COLOR_PAIR(i == focus ? COLOR_BLACK_ON_CYAN_BTN : COLOR_BLACK_ON_WHITE));
             mvwprintw(win, 3+i, 5, "[%c] ", *mode & chmod_permissions[i].bit ? 'x' : ' ');
-            chmod_label(win, 3+i, 9, chmod_permissions[i].label, chmod_permissions[i].hotkey, i == focus);
+            draw_dialog_hotkey(win, 3+i, 9, chmod_permissions[i].label, chmod_permissions[i].hotkey, i == focus);
         }
         wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
         mvwaddstr(win, 3, 38, "Name:");
@@ -554,7 +554,7 @@ int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, m
             int is_default=buttons[i].action == CHMOD_SET;
             dialog_button button=buttons[i].bounds;
             mvwprintw(win, button.y, button.x, is_default ? "[< %s >]" : "[ %s ]", buttons[i].label);
-            chmod_label(win, button.y, button.x+(is_default ? 3 : 2), buttons[i].label,
+            draw_dialog_hotkey(win, button.y, button.x+(is_default ? 3 : 2), buttons[i].label,
                 buttons[i].hotkey, focus == 12+i);
         }
         wnoutrefresh(win);
@@ -616,4 +616,125 @@ int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, m
     dialog_restore_screen();
     if (saved_cursor != ERR) curs_set(saved_cursor);
     return action;
+}
+
+// Keep both paths visible while reusing the standard UTF-8 editing/navigation rules.
+int show_symlink_dialog(char *target, char *link_name)
+{
+    int width=getmaxx(stdscr) < 72 ? getmaxx(stdscr) : 72, height=13;
+    if (width < 34 || getmaxy(stdscr) < height) {
+        show_errormsg("Symbolic link dialog needs a terminal of at least 34 x 13 cells");
+        return 0;
+    }
+    dialog_save_screen();
+    WINDOW *win=newwin(height, width, (getmaxy(stdscr)-height)/2, (getmaxx(stdscr)-width)/2);
+    if (!win) { dialog_restore_screen(); return 0; }
+    wbkgd(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+    keypad(win, TRUE);
+    show_shadow(win);
+    int saved_mouseinterval=mouseinterval(50), saved_cursor=curs_set(1);
+
+    char *fields[]={target, link_name};
+    int positions[]={strlen(target), strlen(link_name)}, offsets[]={0, 0}, modified[]={0, 0};
+    int rows[]={4, 7}, field_width=width-8, focus=0, pressed=-1, accepted=0;
+    dialog_button buttons[]={{width/2-8, 10, 8}, {width/2+1, 10, 10}};
+    while (1) {
+        wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+        werase(win);
+        draw_framed_box(win, 1, 1, height-2, width-2);
+        draw_dialog_separator(win, 9);
+        wattrset(win, A_BOLD | COLOR_PAIR(COLOR_BLUE_ON_WHITE));
+        mvwaddstr(win, 1, (width-15)/2, " Symbolic link ");
+        wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+        mvwaddstr(win, 3, 4, "Existing filename (target):");
+        mvwaddstr(win, 6, 4, "Symbolic link filename:");
+        for (int i=0; i < 2; i++) {
+            int column=text_column(fields[i], positions[i], 1);
+            positions[i]=text_offset(fields[i], strlen(fields[i]), column, 1);
+            if (column-offsets[i] >= field_width) offsets[i]=column-field_width+1;
+            if (column < offsets[i]) offsets[i]=column;
+            wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_PMPT) | (focus == i && !modified[i] ? A_BOLD : 0));
+            mvwhline(win, rows[i], 4, ' ', field_width);
+            draw_text(win, rows[i], 4, fields[i], offsets[i], field_width);
+        }
+        for (int i=0; i < 2; i++) {
+            wattrset(win, COLOR_PAIR(focus == i+2 ? COLOR_BLACK_ON_CYAN_BTN : COLOR_BLACK_ON_WHITE));
+            mvwaddstr(win, buttons[i].y, buttons[i].x, i ? "[ Cancel ]" : "[< OK >]");
+            draw_dialog_hotkey(win, buttons[i].y, buttons[i].x+(i ? 2 : 3), i ? "Cancel" : "OK", 0, focus == i+2);
+        }
+        if (focus < 2) wmove(win, rows[focus], 4+text_column(fields[focus], positions[focus], 1)-offsets[focus]);
+        wnoutrefresh(win);
+        refresh_screen(focus < 2);
+
+        char input_text[MB_LEN_MAX+1];
+        MEVENT event;
+        int ch=read_text_key(win, input_text, &event);
+        if (ch != KEY_MOUSE && ch != ERR) pressed=-1;
+        if (ch == 27 || ch == KEY_F(10) || ch == KEY_RESIZE) break;
+        if (ch == '\n') { accepted=focus != 3; break; }
+        if (ch == KEY_UP || ch == KEY_BTAB) focus=(focus+3)%4;
+        if (ch == KEY_DOWN || ch == '\t') focus=(focus+1)%4;
+        if ((ch == KEY_LEFT || ch == KEY_RIGHT) && focus >= 2) focus=5-focus;
+        if (focus < 2) {
+            char *field=fields[focus];
+            int *position=&positions[focus];
+            if (ch == KEY_LEFT || ch == KEY_RIGHT || ch == KEY_HOME || ch == KEY_END) {
+                if (ch == KEY_LEFT && *position > 0) *position=text_previous(field, *position);
+                if (ch == KEY_RIGHT && *position < strlen(field)) *position=text_next(field, strlen(field), *position);
+                if (ch == KEY_HOME) *position=0;
+                if (ch == KEY_END) *position=strlen(field);
+                modified[focus]=1;
+            }
+            if (ch == KEY_BACKSPACE && *position > 0) {
+                int previous=text_previous(field, *position);
+                memmove(field+previous, field+*position, strlen(field)-*position+1);
+                *position=previous;
+                modified[focus]=1;
+            }
+            if (ch == KEY_DC && *position < strlen(field)) {
+                int next=text_next(field, strlen(field), *position);
+                memmove(field+*position, field+next, strlen(field)-next+1);
+                modified[focus]=1;
+            }
+            if (input_text[0]) {
+                if (!modified[focus]) { field[0]='\0'; *position=0; modified[focus]=1; }
+                int length=strlen(field), bytes=strlen(input_text);
+                if (length+bytes < CMD_MAX) {
+                    memmove(field+*position+bytes, field+*position, length-*position+1);
+                    memcpy(field+*position, input_text, bytes);
+                    *position+=bytes;
+                }
+            }
+        } else {
+            if (!strcmp(input_text, " ")) { accepted=focus == 2; break; }
+            if (!strcmp(input_text, "o") || !strcmp(input_text, "O")) { accepted=1; break; }
+            if (!strcmp(input_text, "c") || !strcmp(input_text, "C")) break;
+        }
+        if (ch == KEY_MOUSE) {
+            int clicked=event.bstate & (BUTTON1_CLICKED|BUTTON1_DOUBLE_CLICKED|BUTTON1_TRIPLE_CLICKED);
+            if (!clicked && !(event.bstate & (BUTTON1_PRESSED|BUTTON1_RELEASED))) continue;
+            int x=event.x-getbegx(win), y=event.y-getbegy(win), hit=-1;
+            for (int i=0; i < 2; i++) {
+                if (y == rows[i] && x >= 4 && x < width-4) {
+                    focus=i;
+                    modified[i]=1;
+                    positions[i]=text_offset(fields[i], strlen(fields[i]), offsets[i]+x-4, 1);
+                    pressed=-1;
+                    hit=i;
+                }
+                if (y == buttons[i].y && x >= buttons[i].x && x < buttons[i].x+buttons[i].width) hit=i+2;
+            }
+            if (event.bstate & BUTTON1_PRESSED) {
+                pressed=hit;
+                if (hit >= 0) focus=hit;
+            }
+            if (event.bstate & BUTTON1_RELEASED) { clicked=hit >= 2 && hit == pressed; pressed=-1; }
+            if (clicked && hit >= 2) { accepted=hit == 2; break; }
+        }
+    }
+    mouseinterval(saved_mouseinterval);
+    delwin(win);
+    dialog_restore_screen();
+    if (saved_cursor != ERR) curs_set(saved_cursor);
+    return accepted;
 }

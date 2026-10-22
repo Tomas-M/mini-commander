@@ -35,6 +35,9 @@ void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selec
 int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is_danger, int vertical_buttons, int edit_prompt);
 int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, mode_t *marked, int multiple);
 void change_file_permissions(FileNode *current);
+int show_symlink_dialog(char *target, char *link_name);
+void create_symbolic_link(FileNode *current);
+void edit_symbolic_link(FileNode *current);
 void show_errormsg(char * msg);
 void update_cmd(void);
 int execute_file(const char *filename);

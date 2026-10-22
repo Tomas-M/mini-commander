@@ -90,6 +90,15 @@ slax.org
 - **Symbolic links and file colors:** link targets are displayed and broken
   links are marked. Executables, selected archive formats, and source files
   have distinct colors. Copying a symbolic link copies the link itself.
+  `Ctrl+X`, then `S` creates a symlink, with editable target and link name;
+  defaults point to the file under the cursor and place the link in the other
+  panel's directory. A relative link name uses the active directory; a relative
+  target is stored literally and resolves from the new link's directory.
+  Existing entries are not overwritten. `Ctrl+X`, then `Ctrl+S` edits the target
+  of the symlink under the cursor, including a broken link, and reports an error
+  for other file types. Editing replaces the link atomically after preparing
+  its replacement; canceling leaves it unchanged. These commands operate on the
+  file under the cursor, regardless of marked files.
 - **Mouse navigation:** select items, double-click to open directories or run
   executables, and scroll with the wheel in supported terminals. Left dragging
   moves the panel cursor; right clicking toggles a file's selection like `Insert`.
@@ -110,6 +119,8 @@ slax.org
 | `Alt+P` / `Alt+N` | Previous/next command in the in-memory history; returning past the newest entry restores the unfinished command. |
 | `Ctrl+U` | Swap the panels, including paths, sorting, selections, cursors and scroll positions; focus follows the original active panel. In the editor, undo. |
 | `Ctrl+X`, then `C` | Edit permissions of the marked files, or the file under the cursor, using checkboxes. |
+| `Ctrl+X`, then `S` | Create a symbolic link to the file under the cursor; edit its target and name in a dialog. |
+| `Ctrl+X`, then `Ctrl+S` | Edit the target of the symlink under the cursor. |
 | `Alt+G` | Go to a directory entered in a dialog; supports relative paths and `~`. |
 | `Shift+F5` / `Shift+F6` / `Shift+F7` | Copy, move/rename, or create a directory with the name under the cursor prefilled, without its path. Typing appends to the name; relative targets use the active directory. |
 | `Enter` | Execute a typed shell command in the active directory; with an empty command line, open a directory or run an executable. |

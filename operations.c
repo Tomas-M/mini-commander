@@ -52,6 +52,83 @@ static int operation_path(char *result, const char *directory, const char *name)
     return 0;
 }
 
+void create_symbolic_link(FileNode *current)
+{
+    if (!current) return;
+    if (!strcmp(current->name, "..")) { show_errormsg("Cannot operate on \"..\""); return; }
+    char target[CMD_MAX], name[CMD_MAX], path[CMD_MAX];
+    PanelProp *other=active_panel == &left_panel ? &right_panel : &left_panel;
+    if (operation_path(target, active_panel->path, current->name) != 0 ||
+        operation_path(name, other->path, current->name) != 0) {
+        show_errormsg("Symbolic link path is too long");
+        return;
+    }
+
+    while (show_symlink_dialog(target, name)) {
+        if (!target[0] || !name[0]) {
+            show_errormsg("Target and symbolic link name must not be empty");
+            continue;
+        }
+        if (operation_path(path, name[0] == '/' ? "" : active_panel->path, name) == 0 &&
+            symlink(target, path) == 0) return;
+        show_errormsg(SPRINTF("Cannot create symbolic link:\n%s\n%s", name, strerror(errno)));
+    }
+}
+
+// Prepare a new link in a private sibling directory, then replace the old link atomically.
+// A failed symlink or rename leaves the original entry in place.
+static int replace_symbolic_link(const char *path, const char *target, const struct stat *original)
+{
+    char temporary_dir[CMD_MAX], temporary_link[CMD_MAX];
+    if (operation_path(temporary_dir, active_panel->path, ".mc-symlink-XXXXXX") != 0) return -1;
+    // Check both lengths before creating anything that needs cleanup.
+    if (operation_path(temporary_link, temporary_dir, "link") != 0) return -1;
+    if (!mkdtemp(temporary_dir)) return -1;
+    operation_path(temporary_link, temporary_dir, "link");
+
+    int error=0;
+    if (symlink(target, temporary_link) != 0) error=errno;
+    struct stat current;
+    if (!error && lstat(path, &current) != 0) error=errno;
+    if (!error && (!S_ISLNK(current.st_mode) || current.st_dev != original->st_dev || current.st_ino != original->st_ino))
+        error=ESTALE;
+    if (!error && rename(temporary_link, path) != 0) error=errno;
+    if (error) unlink(temporary_link);
+    rmdir(temporary_dir);
+    errno=error;
+    return error ? -1 : 0;
+}
+
+void edit_symbolic_link(FileNode *current)
+{
+    if (!current) return;
+    char path[CMD_MAX], target[CMD_MAX], original_target[CMD_MAX];
+    struct stat info;
+    if (operation_path(path, active_panel->path, current->name) != 0 || lstat(path, &info) != 0) {
+        show_errormsg(SPRINTF("Cannot inspect symbolic link:\n%s\n%s", current->name, strerror(errno)));
+        return;
+    }
+    if (!S_ISLNK(info.st_mode)) {
+        show_errormsg(SPRINTF("\"%s\" is not a symbolic link", current->name));
+        return;
+    }
+    ssize_t length=readlink(path, target, sizeof(target));
+    if (length < 0 || (size_t)length >= sizeof(target)) {
+        show_errormsg(SPRINTF("Cannot read symbolic link:\n%s\n%s", current->name,
+            length < 0 ? strerror(errno) : "Symbolic link target is too long"));
+        return;
+    }
+    target[length]='\0';
+    strcpy(original_target, target);
+    while (show_dialog(SPRINTF("Edit symlink\n%s\nPoints to:", current->name),
+        (char *[]) {"Save", "Cancel", NULL}, 0, target, 0, 0, 1) == 1) {
+        if (!target[0]) { show_errormsg("Symbolic link target must not be empty"); continue; }
+        if (!strcmp(target, original_target)) return;
+        if (replace_symbolic_link(path, target, &info) == 0) return;
+        show_errormsg(SPRINTF("Cannot edit symbolic link:\n%s\n%s", current->name, strerror(errno)));
+    }
+}
+
 // Chmod affects the chosen entries themselves, without descending into directories.
 void change_file_permissions(FileNode *current)
 {

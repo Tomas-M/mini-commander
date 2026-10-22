@@ -130,11 +130,13 @@ int main(int argc, char *argv[]) {
         }
         if (ctrl_x_pending && ch != ERR && ch != KEY_MOUSE && ch != KEY_RESIZE) {
             ctrl_x_pending=0;
-            if ((input_text[0] == 'c' || input_text[0] == 'C') && !input_text[1]) {
-                change_file_permissions(current);
-                update_files_in_both_panels();
-                redraw_ui();
-            }
+            int key=input_text[0] && !input_text[1] ? tolower((unsigned char)input_text[0]) : -1;
+            if (key == 'c') change_file_permissions(current);
+            else if (key == 's') create_symbolic_link(current);
+            else if (ch == 19) edit_symbolic_link(current); // Ctrl+X, Ctrl+S
+            else continue;
+            update_files_in_both_panels();
+            redraw_ui();
             continue;
         }
         if (ch == KEY_MOUSE || ch == KEY_RESIZE) ctrl_x_pending=0;

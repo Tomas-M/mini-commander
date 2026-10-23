@@ -66,7 +66,9 @@ slax.org
   and other permissions, plus setuid, setgid, and the sticky bit. Use arrows or
   `Tab` to move, `Space` or a mouse click to toggle, and `Enter` to apply.
   Framed Permission and File sections show the settings and file details;
-  blue letters identify keyboard shortcuts, and `[< Set >]` is the default action.
+  blue letters in permission names identify keyboard shortcuts. `Enter` applies
+  `Set` by default. Dialogs use Mini Commander's original ASCII frames (`+`, `-`,
+  `|`) and standard buttons, including their usual focus highlighting.
   The octal mode updates as you edit. `Set` changes the current file and proceeds
   to the next marked file; `Set all` applies the complete mode to all remaining
   marked files. A changed checkbox gains a `*`; `Insert` or `T` toggles this mark
@@ -96,7 +98,9 @@ slax.org
   target is stored literally and resolves from the new link's directory.
   Existing entries are not overwritten. `Ctrl+X`, then `Ctrl+S` edits the target
   of the symlink under the cursor, including a broken link, and reports an error
-  for other file types. Editing replaces the link atomically after preparing
+  for other file types. The compact edit dialog has its title in the frame,
+  one line identifying the link, a target field, and OK/Cancel buttons.
+  Editing replaces the link atomically after preparing
   its replacement; canceling leaves it unchanged. These commands operate on the
   file under the cursor, regardless of marked files.
 - **Mouse navigation:** select items, double-click to open directories or run

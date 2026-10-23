@@ -36,6 +36,7 @@ int show_dialog(char *title, char *buttons[], int selected, char *prompt, int is
 int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, mode_t *marked, int multiple);
 void change_file_permissions(FileNode *current);
 int show_symlink_dialog(char *target, char *link_name);
+int show_edit_symlink_dialog(const char *name, char *target);
 void create_symbolic_link(FileNode *current);
 void edit_symbolic_link(FileNode *current);
 void show_errormsg(char * msg);

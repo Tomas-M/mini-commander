@@ -120,8 +120,7 @@ void edit_symbolic_link(FileNode *current)
     }
     target[length]='\0';
     strcpy(original_target, target);
-    while (show_dialog(SPRINTF("Edit symlink\n%s\nPoints to:", current->name),
-        (char *[]) {"Save", "Cancel", NULL}, 0, target, 0, 0, 1) == 1) {
+    while (show_edit_symlink_dialog(current->name, target)) {
         if (!target[0]) { show_errormsg("Symbolic link target must not be empty"); continue; }
         if (!strcmp(target, original_target)) return;
         if (replace_symbolic_link(path, target, &info) == 0) return;

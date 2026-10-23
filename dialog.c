@@ -155,29 +155,36 @@ static dialog_button dialog_button_bounds(WINDOW *win, char *title, char *button
     return (dialog_button){(getmaxx(win)-total)/2+before, y, text_column(buttons[index], strlen(buttons[index]), 1)+4};
 }
 
+// Shared by standard dialogs, chmod, and both symlink dialogs.
+static void draw_dialog_button(WINDOW *win, dialog_button button, const char *label, int focused, int is_danger, int vertical)
+{
+    attr_t attributes;
+    short color;
+    wattr_get(win, &attributes, &color, NULL);
+    if (focused)
+        wattr_set(win, is_danger ? attributes & ~A_BOLD : attributes,
+            is_danger ? COLOR_BLACK_ON_WHITE : COLOR_BLACK_ON_CYAN_BTN, NULL);
+    if (vertical) {
+        mvwprintw(win, button.y, button.x, " [%s] ", focused ? "x" : " ");
+        mvwhline(win, button.y, button.x+5, ' ', button.width-5);
+        draw_text(win, button.y, button.x+5, label, 0, button.width-6);
+    } else {
+        mvwprintw(win, button.y, button.x, "[ %s ]", label);
+    }
+    wattr_set(win, attributes, color, NULL);
+}
+
 void update_dialog_buttons(WINDOW *win, char * title, char *buttons[], int selected, int prompt_present, int editing_prompt, int is_danger, int vertical_buttons) {
     int move_cursor_pos_x = 0;
     int move_cursor_pos_y = 0;
 
     for (int i=0; buttons[i]; i++) {
         dialog_button button=dialog_button_bounds(win, title, buttons, i, prompt_present, vertical_buttons);
-        attr_t attributes;
-        short color;
-        wattr_get(win, &attributes, &color, NULL);
+        draw_dialog_button(win, button, buttons[i], i == selected && !editing_prompt, is_danger, vertical_buttons);
         if (i == selected && !editing_prompt) {
-            wattr_set(win, is_danger ? attributes & ~A_BOLD : attributes,
-                is_danger ? COLOR_BLACK_ON_WHITE : COLOR_BLACK_ON_CYAN_BTN, NULL);
             move_cursor_pos_x=button.x+2;
             move_cursor_pos_y=button.y;
         }
-        if (vertical_buttons) {
-            mvwprintw(win, button.y, button.x, " [%s] ", i == selected && !editing_prompt ? "x" : " ");
-            mvwhline(win, button.y, button.x+5, ' ', button.width-5);
-            draw_text(win, button.y, button.x+5, buttons[i], 0, button.width-6);
-        } else {
-            mvwprintw(win, button.y, button.x, "[ %s ]", buttons[i]);
-        }
-        wattr_set(win, attributes, color, NULL);
     }
 
     if (move_cursor_pos_x > 0 || move_cursor_pos_y > 0) {
@@ -437,32 +444,32 @@ typedef struct {
     dialog_button bounds;
 } chmod_button;
 
-// Align both columns of actions across rows, including the wider default button.
+// Align both columns of standard buttons, with the usual two spaces between them.
 static void chmod_button_pair(chmod_button *buttons, int width, int row)
 {
-    int first=strlen(buttons[0].label)+(buttons[0].action == CHMOD_SET ? 6 : 4);
+    int first=strlen(buttons[0].label)+4;
     int second=strlen(buttons[1].label)+4;
-    buttons[0].bounds=(dialog_button){width/2-first, row, first};
+    buttons[0].bounds=(dialog_button){width/2-first-1, row, first};
     buttons[1].bounds=(dialog_button){width/2+1, row, second};
 }
 
 static void draw_framed_box(WINDOW *win, int y, int x, int height, int width)
 {
-    mvwhline(win, y, x+1, ACS_HLINE, width-2);
-    mvwhline(win, y+height-1, x+1, ACS_HLINE, width-2);
-    mvwvline(win, y+1, x, ACS_VLINE, height-2);
-    mvwvline(win, y+1, x+width-1, ACS_VLINE, height-2);
-    mvwaddch(win, y, x, ACS_ULCORNER);
-    mvwaddch(win, y, x+width-1, ACS_URCORNER);
-    mvwaddch(win, y+height-1, x, ACS_LLCORNER);
-    mvwaddch(win, y+height-1, x+width-1, ACS_LRCORNER);
+    mvwhline(win, y, x+1, '-', width-2);
+    mvwhline(win, y+height-1, x+1, '-', width-2);
+    mvwvline(win, y+1, x, '|', height-2);
+    mvwvline(win, y+1, x+width-1, '|', height-2);
+    mvwaddch(win, y, x, '+');
+    mvwaddch(win, y, x+width-1, '+');
+    mvwaddch(win, y+height-1, x, '+');
+    mvwaddch(win, y+height-1, x+width-1, '+');
 }
 
 static void draw_dialog_separator(WINDOW *win, int row)
 {
-    mvwhline(win, row, 2, ACS_HLINE, getmaxx(win)-4);
-    mvwaddch(win, row, 1, ACS_LTEE);
-    mvwaddch(win, row, getmaxx(win)-2, ACS_RTEE);
+    mvwhline(win, row, 2, '-', getmaxx(win)-4);
+    mvwaddch(win, row, 1, '+');
+    mvwaddch(win, row, getmaxx(win)-2, '+');
 }
 
 static void draw_dialog_hotkey(WINDOW *win, int row, int x, const char *label, int hotkey, int focused)
@@ -524,11 +531,10 @@ int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, m
     while (1) {
         wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
         werase(win);
-        draw_framed_box(win, 1, 1, height-2, width-2);
+        draw_dialog_frame(win, height-4);
         draw_framed_box(win, 2, 3, 14, 32);
         draw_framed_box(win, 2, 36, 14, width-39);
         if (multiple) draw_dialog_separator(win, 16);
-        draw_dialog_separator(win, height-4);
         wattrset(win, A_BOLD | COLOR_PAIR(COLOR_BLUE_ON_WHITE));
         mvwaddstr(win, 1, (width-15)/2, " Chmod command ");
         mvwaddstr(win, 2, 4, " Permission ");
@@ -549,14 +555,8 @@ int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, m
         draw_text(win, 8, 38, owner, 0, width-42);
         mvwaddstr(win, 9, 38, "Group name:");
         draw_text(win, 10, 38, group, 0, width-42);
-        for (int i=0; i < count; i++) {
-            wattrset(win, COLOR_PAIR(focus == 12+i ? COLOR_BLACK_ON_CYAN_BTN : COLOR_BLACK_ON_WHITE));
-            int is_default=buttons[i].action == CHMOD_SET;
-            dialog_button button=buttons[i].bounds;
-            mvwprintw(win, button.y, button.x, is_default ? "[< %s >]" : "[ %s ]", buttons[i].label);
-            draw_dialog_hotkey(win, button.y, button.x+(is_default ? 3 : 2), buttons[i].label,
-                buttons[i].hotkey, focus == 12+i);
-        }
+        for (int i=0; i < count; i++)
+            draw_dialog_button(win, buttons[i].bounds, buttons[i].label, focus == 12+i, 0, 0);
         wnoutrefresh(win);
         refresh_screen(0);
 
@@ -618,12 +618,13 @@ int show_chmod_dialog(const char *name, const struct stat *info, mode_t *mode, m
     return action;
 }
 
-// Keep both paths visible while reusing the standard UTF-8 editing/navigation rules.
-int show_symlink_dialog(char *target, char *link_name)
+// Creation shows both paths; editing uses one label and field in a compact dialog.
+static int symlink_dialog(const char *name, char *target, char *link_name)
 {
-    int width=getmaxx(stdscr) < 72 ? getmaxx(stdscr) : 72, height=13;
+    int editing=link_name == NULL, field_count=editing ? 1 : 2;
+    int width=getmaxx(stdscr) < 72 ? getmaxx(stdscr) : 72, height=editing ? 8 : 13;
     if (width < 34 || getmaxy(stdscr) < height) {
-        show_errormsg("Symbolic link dialog needs a terminal of at least 34 x 13 cells");
+        show_errormsg(SPRINTF("Symbolic link dialog needs a terminal of at least 34 x %d cells", height));
         return 0;
     }
     dialog_save_screen();
@@ -635,47 +636,58 @@ int show_symlink_dialog(char *target, char *link_name)
     int saved_mouseinterval=mouseinterval(50), saved_cursor=curs_set(1);
 
     char *fields[]={target, link_name};
-    int positions[]={strlen(target), strlen(link_name)}, offsets[]={0, 0}, modified[]={0, 0};
-    int rows[]={4, 7}, field_width=width-8, focus=0, pressed=-1, accepted=0;
-    dialog_button buttons[]={{width/2-8, 10, 8}, {width/2+1, 10, 10}};
+    int positions[]={strlen(target), link_name ? strlen(link_name) : 0}, offsets[]={0, 0}, modified[]={editing, 0};
+    int rows[]={editing ? 3 : 4, 7}, field_x=editing ? 3 : 4, field_width=width-2*field_x;
+    int focus=0, pressed=-1, accepted=0, controls=field_count+2;
+    char *button_labels[]={"OK", "Cancel", NULL};
+    dialog_button buttons[2];
+    for (int i=0; i < 2; i++) {
+        buttons[i]=dialog_button_bounds(win, "", button_labels, i, 0, 0);
+        buttons[i].y=height-3;
+    }
     while (1) {
         wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
         werase(win);
-        draw_framed_box(win, 1, 1, height-2, width-2);
-        draw_dialog_separator(win, 9);
+        draw_dialog_frame(win, height-4);
         wattrset(win, A_BOLD | COLOR_PAIR(COLOR_BLUE_ON_WHITE));
-        mvwaddstr(win, 1, (width-15)/2, " Symbolic link ");
+        const char *title=editing ? " Edit symlink " : " Symbolic link ";
+        mvwaddstr(win, 1, (width-strlen(title))/2, title);
         wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
-        mvwaddstr(win, 3, 4, "Existing filename (target):");
-        mvwaddstr(win, 6, 4, "Symbolic link filename:");
-        for (int i=0; i < 2; i++) {
+        if (editing) {
+            char label[CMD_MAX];
+            snprintf(label, sizeof(label), "Symlink '%s' points to:", name);
+            draw_text(win, 2, 3, SHORTEN(label, width-6), 0, width-6);
+        } else {
+            mvwaddstr(win, 3, 4, "Existing filename (target):");
+            mvwaddstr(win, 6, 4, "Symbolic link filename:");
+        }
+        for (int i=0; i < field_count; i++) {
             int column=text_column(fields[i], positions[i], 1);
             positions[i]=text_offset(fields[i], strlen(fields[i]), column, 1);
             if (column-offsets[i] >= field_width) offsets[i]=column-field_width+1;
             if (column < offsets[i]) offsets[i]=column;
             wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_CYAN_PMPT) | (focus == i && !modified[i] ? A_BOLD : 0));
-            mvwhline(win, rows[i], 4, ' ', field_width);
-            draw_text(win, rows[i], 4, fields[i], offsets[i], field_width);
+            mvwhline(win, rows[i], field_x, ' ', field_width);
+            draw_text(win, rows[i], field_x, fields[i], offsets[i], field_width);
         }
-        for (int i=0; i < 2; i++) {
-            wattrset(win, COLOR_PAIR(focus == i+2 ? COLOR_BLACK_ON_CYAN_BTN : COLOR_BLACK_ON_WHITE));
-            mvwaddstr(win, buttons[i].y, buttons[i].x, i ? "[ Cancel ]" : "[< OK >]");
-            draw_dialog_hotkey(win, buttons[i].y, buttons[i].x+(i ? 2 : 3), i ? "Cancel" : "OK", 0, focus == i+2);
-        }
-        if (focus < 2) wmove(win, rows[focus], 4+text_column(fields[focus], positions[focus], 1)-offsets[focus]);
+        wattrset(win, COLOR_PAIR(COLOR_BLACK_ON_WHITE));
+        for (int i=0; i < 2; i++)
+            draw_dialog_button(win, buttons[i], button_labels[i], focus == i+field_count, 0, 0);
+        if (focus < field_count) wmove(win, rows[focus], field_x+text_column(fields[focus], positions[focus], 1)-offsets[focus]);
         wnoutrefresh(win);
-        refresh_screen(focus < 2);
+        refresh_screen(focus < field_count);
 
         char input_text[MB_LEN_MAX+1];
         MEVENT event;
         int ch=read_text_key(win, input_text, &event);
         if (ch != KEY_MOUSE && ch != ERR) pressed=-1;
         if (ch == 27 || ch == KEY_F(10) || ch == KEY_RESIZE) break;
-        if (ch == '\n') { accepted=focus != 3; break; }
-        if (ch == KEY_UP || ch == KEY_BTAB) focus=(focus+3)%4;
-        if (ch == KEY_DOWN || ch == '\t') focus=(focus+1)%4;
-        if ((ch == KEY_LEFT || ch == KEY_RIGHT) && focus >= 2) focus=5-focus;
-        if (focus < 2) {
+        if (ch == '\n') { accepted=focus != field_count+1; break; }
+        if (ch == KEY_UP || ch == KEY_BTAB) focus=(focus+controls-1)%controls;
+        if (ch == KEY_DOWN || ch == '\t') focus=(focus+1)%controls;
+        if ((ch == KEY_LEFT || ch == KEY_RIGHT) && focus >= field_count)
+            focus=focus == field_count ? field_count+1 : field_count;
+        if (focus < field_count) {
             char *field=fields[focus];
             int *position=&positions[focus];
             if (ch == KEY_LEFT || ch == KEY_RIGHT || ch == KEY_HOME || ch == KEY_END) {
@@ -706,7 +718,7 @@ int show_symlink_dialog(char *target, char *link_name)
                 }
             }
         } else {
-            if (!strcmp(input_text, " ")) { accepted=focus == 2; break; }
+            if (!strcmp(input_text, " ")) { accepted=focus == field_count; break; }
             if (!strcmp(input_text, "o") || !strcmp(input_text, "O")) { accepted=1; break; }
             if (!strcmp(input_text, "c") || !strcmp(input_text, "C")) break;
         }
@@ -714,22 +726,23 @@ int show_symlink_dialog(char *target, char *link_name)
             int clicked=event.bstate & (BUTTON1_CLICKED|BUTTON1_DOUBLE_CLICKED|BUTTON1_TRIPLE_CLICKED);
             if (!clicked && !(event.bstate & (BUTTON1_PRESSED|BUTTON1_RELEASED))) continue;
             int x=event.x-getbegx(win), y=event.y-getbegy(win), hit=-1;
-            for (int i=0; i < 2; i++) {
-                if (y == rows[i] && x >= 4 && x < width-4) {
+            for (int i=0; i < field_count; i++) {
+                if (y == rows[i] && x >= field_x && x < width-field_x) {
                     focus=i;
                     modified[i]=1;
-                    positions[i]=text_offset(fields[i], strlen(fields[i]), offsets[i]+x-4, 1);
+                    positions[i]=text_offset(fields[i], strlen(fields[i]), offsets[i]+x-field_x, 1);
                     pressed=-1;
                     hit=i;
                 }
-                if (y == buttons[i].y && x >= buttons[i].x && x < buttons[i].x+buttons[i].width) hit=i+2;
             }
+            for (int i=0; i < 2; i++)
+                if (y == buttons[i].y && x >= buttons[i].x && x < buttons[i].x+buttons[i].width) hit=i+field_count;
             if (event.bstate & BUTTON1_PRESSED) {
                 pressed=hit;
                 if (hit >= 0) focus=hit;
             }
-            if (event.bstate & BUTTON1_RELEASED) { clicked=hit >= 2 && hit == pressed; pressed=-1; }
-            if (clicked && hit >= 2) { accepted=hit == 2; break; }
+            if (event.bstate & BUTTON1_RELEASED) { clicked=hit >= field_count && hit == pressed; pressed=-1; }
+            if (clicked && hit >= field_count) { accepted=hit == field_count; break; }
         }
     }
     mouseinterval(saved_mouseinterval);
@@ -737,4 +750,14 @@ int show_symlink_dialog(char *target, char *link_name)
     dialog_restore_screen();
     if (saved_cursor != ERR) curs_set(saved_cursor);
     return accepted;
+}
+
+int show_symlink_dialog(char *target, char *link_name)
+{
+    return symlink_dialog(NULL, target, link_name);
+}
+
+int show_edit_symlink_dialog(const char *name, char *target)
+{
+    return symlink_dialog(name, target, NULL);
 }
